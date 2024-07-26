@@ -1,14 +1,4 @@
-<p align="center">
-
-<img src="https://github.com/homebridge/branding/raw/latest/logos/homebridge-wordmark-logo-vertical.png" width="150">
-
-</p>
-
-<span align="center">
-
-# Homebridge Platform Plugin Template
-
-</span>
+# Homebridge SleepMe
 
 This is a template Homebridge dynamic platform plugin and can be used as a base to help you get started developing your own plugin.
 
