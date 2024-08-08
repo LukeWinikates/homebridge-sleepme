@@ -2,9 +2,11 @@ import axios, {AxiosResponse} from 'axios';
 
 export class Client {
   readonly token: string;
+  private readonly baseURL: string;
 
-  constructor(token: string) {
+  constructor(token: string, baseURL = 'https://api.developer.sleep.me') {
     this.token = token;
+    this.baseURL = baseURL;
   }
 
   headers(): object {
@@ -14,27 +16,27 @@ export class Client {
   }
 
   listDevices(): Promise<AxiosResponse<Device[]>> {
-    return axios.get<Device[]>('https://api.developer.sleep.me/v1/devices',
+    return axios.get<Device[]>(this.baseURL + '/v1/devices',
       {headers: this.headers()});
   }
 
   getDeviceStatus(id: string): Promise<AxiosResponse<DeviceStatus>> {
-    return axios.get<DeviceStatus>('https://api.developer.sleep.me/v1/devices/' + id,
+    return axios.get<DeviceStatus>(this.baseURL + '/v1/devices/' + id,
       {headers: this.headers()});
   }
 
   setTemperatureFahrenheit(id: string, temperature: number): Promise<AxiosResponse<Control>> {
-    return axios.patch<Control>('https://api.developer.sleep.me/v1/devices/' + id, {set_temperature_f: temperature},
+    return axios.patch<Control>(this.baseURL + '/v1/devices/' + id, {set_temperature_f: temperature},
       {headers: this.headers()});
   }
 
   setTemperatureCelsius(id: string, temperature: number): Promise<AxiosResponse<Control>> {
-    return axios.patch<Control>('https://api.developer.sleep.me/v1/devices/' + id, {set_temperature_c: temperature},
+    return axios.patch<Control>(this.baseURL + '/v1/devices/' + id, {set_temperature_c: temperature},
       {headers: this.headers()});
   }
 
-  setThermalControlStatus(id: string, targetState: 'standby' | 'active') : Promise<AxiosResponse<Control>>{
-    return axios.patch<Control>('https://api.developer.sleep.me/v1/devices/' + id, {thermal_control_status: targetState},
+  setThermalControlStatus(id: string, targetState: 'standby' | 'active'): Promise<AxiosResponse<Control>> {
+    return axios.patch<Control>(this.baseURL + '/v1/devices/' + id, {thermal_control_status: targetState},
       {headers: this.headers()});
   }
 }
