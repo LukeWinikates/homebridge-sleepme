@@ -2,7 +2,7 @@
   "private": false,
   "displayName": "SleepMe Homebridge",
   "name": "@lukewinkates/homebridge-sleepme",
-  "version": "0.1.0",
+  "version": "0.1.1-0",
   "description": "HomeKit support for Sleepme Dock Pro devices via Homebridge",
   "license": "Apache-2.0",
   "type": "module",
