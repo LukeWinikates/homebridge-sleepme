@@ -1,29 +1,16 @@
-import {describe, expect, test, afterEach, beforeEach} from '@jest/globals';
+import {describe, expect, test, afterEach} from '@jest/globals';
 import {start, FakeServer} from '../fakeserver/server';
 import {Client} from './client';
 
 describe('client', () => {
   let server: FakeServer;
-  beforeEach(() => {
-    server = start();
-  });
+
   afterEach(async () => {
     await server.stop();
   });
 
-  test('list devices', async () => {
-    expect(Client).toBeDefined();
-    const client = new Client(server.token, server.host);
-    const devices = await client.listDevices();
-    expect(devices.data).toEqual([{
-      attachments: [],
-      name: 'Device 1',
-      id: '1',
-    }]);
-  });
-
   test('get device by id', async () => {
-    expect(Client).toBeDefined();
+    server = start();
     const client = new Client(server.token, server.host);
     const devices = await client.getDeviceStatus('1');
     expect(devices.data.about).toEqual({
@@ -36,8 +23,21 @@ describe('client', () => {
     });
   });
 
-  test('set temperature', async () => {
+  test('list devices', async () => {
+    server = start();
     expect(Client).toBeDefined();
+    const client = new Client(server.token, server.host);
+    const devices = await client.listDevices();
+    expect(devices.data).toEqual([{
+      attachments: [],
+      name: 'Device 1',
+      id: '1',
+    }]);
+  });
+
+
+  test('set temperature', async () => {
+    server = start();
     const client = new Client(server.token, server.host);
     const devices = await client.setTemperatureFahrenheit('1', 74);
     expect(devices.data).toEqual({
@@ -49,4 +49,5 @@ describe('client', () => {
       time_zone: 'America/Los_Angeles',
     });
   });
+
 });

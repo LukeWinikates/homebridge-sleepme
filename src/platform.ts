@@ -58,9 +58,7 @@ export class SleepMePlatform implements DynamicPlatformPlugin {
    * must not be registered again to prevent "duplicate UUID" errors.
    */
   discoverDevices() {
-    console.log(this.config.api_keys);
     this.config.api_keys.forEach(key => {
-      console.log(key);
       const client = new Client(key);
       client.listDevices().then(r => {
         r.data.forEach(device => {

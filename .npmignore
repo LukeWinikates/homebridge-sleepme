@@ -132,3 +132,11 @@ web_modules/
 .yarn/unplugged
 .yarn/build-state.yml
 .pnp.*
+
+src/
+.envrc
+.nvmrc
+.idea/
+dist/fakeserver
+dist/sleepme/*test*
+jest.config.ts

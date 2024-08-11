@@ -1,9 +1,9 @@
 {
-  "private": true,
+  "private": false,
   "displayName": "SleepMe Homebridge",
   "name": "@lukewinkates/homebridge-sleepme",
   "version": "0.1.0",
-  "description": "A short description about what your plugin does.",
+  "description": "HomeKit support for Sleepme Dock Pro devices via Homebridge",
   "license": "Apache-2.0",
   "type": "module",
   "repository": {
@@ -21,7 +21,7 @@
   "scripts": {
     "lint": "eslint src/**/*.ts --max-warnings=0",
     "watch": "npm run build && npm link && nodemon",
-    "build": "rimraf ./dist && tsc && cp node_modules/axios/dist/node/axios.cjs ./dist",
+    "build": "rm -rf ./dist && tsc && cp node_modules/axios/dist/node/axios.cjs ./dist",
     "prepublishOnly": "npm run lint && npm run build",
     "test": "jest"
   },
@@ -40,7 +40,6 @@
     "homebridge": "^1.8.3",
     "jest": "^29.7.0",
     "nodemon": "^3.1.4",
-    "rimraf": "^6.0.1",
     "ts-node": "^10.9.2",
     "typescript": "^5.5.3"
   },

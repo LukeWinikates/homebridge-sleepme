@@ -1,7 +1,7 @@
-import {Service, PlatformAccessory, CharacteristicValue} from 'homebridge';
+import {CharacteristicValue, PlatformAccessory, Service} from 'homebridge';
 
 import {SleepMePlatform} from './platform.js';
-import {Client, Device, DeviceStatus} from './sleepme/client.js';
+import {Client, Control, Device, DeviceStatus} from './sleepme/client.js';
 
 type SleepMeContext = {
   device: Device;
@@ -45,39 +45,35 @@ class Option<T> {
   }
 }
 
-function setTargetTemperature(client: Client, device: Device) {
-  return async (value: CharacteristicValue) => {
-    return client.setTemperatureCelsius(device.id, value as number).then(() => {
-    });
-  };
-}
-
-function setTargetHeatingCoolingState(client: Client, device: Device) {
-  return async (value: CharacteristicValue) => {
-    const targetState = (value === 0) ? 'standby' : 'active';
-    return client.setThermalControlStatus(device.id, targetState).then(() => {
-    });
-  };
-}
+const FAST_POLLING_INTERVAL_MS = 15 * 1000;
+const SLOW_POLLING_INTERVAL_MS = 15 * 60 * 1000;
+const POLLING_RECENCY_THRESHOLD_MS = 5 * 1000;
 
 /**
  * Platform Accessory
  * An instance of this class is created for each accessory your platform registers
- * Each accessory may expose multiple services of different service types.
+ * Each accessory may expose multiple services of different thermostatService types.
  */
 export class SleepMePlatformAccessory {
-  private service: Service;
+  private thermostatService: Service;
+  private batteryService: Service;
   private deviceStatus: DeviceStatus | null;
+  private lastInteractionTime: Date;
+  private timeout: NodeJS.Timeout | undefined;
 
   constructor(
     private readonly platform: SleepMePlatform,
     private readonly accessory: PlatformAccessory,
   ) {
+    this.lastInteractionTime = new Date();
     const {Characteristic, Service} = this.platform;
     const {apiKey, device} = this.accessory.context as SleepMeContext;
     const client = new Client(apiKey);
     this.deviceStatus = null;
     const mapper = newMapper(platform);
+    this.scheduleNextCheck = this.scheduleNextCheck.bind(this);
+    this.updateControlFromResponse = this.updateControlFromResponse.bind(this);
+    this.publishUpdates = this.publishUpdates.bind(this);
 
     // set accessory information
     this.accessory.getService(Service.AccessoryInformation)!
@@ -90,134 +86,95 @@ export class SleepMePlatformAccessory {
         this.deviceStatus = statusResponse.data;
       });
 
-    const accessoryService = Service.Thermostat;
-    this.service = this.accessory.getService(accessoryService) || this.accessory.addService(accessoryService);
+    this.thermostatService = this.accessory.getService(Service.Thermostat) ||
+      this.accessory.addService(Service.Thermostat, `${this.accessory.displayName} - Dock Pro`);
+    this.batteryService = this.accessory.getService(Service.Battery) ||
+      this.accessory.addService(Service.Battery, `${this.accessory.displayName} - Dock Pro Water Level`);
 
     // create handlers for required characteristics
-    this.service.getCharacteristic(Characteristic.CurrentHeatingCoolingState)
+    this.thermostatService.getCharacteristic(Characteristic.CurrentHeatingCoolingState)
       .onGet(() => new Option(this.deviceStatus)
         .map(ds => mapper.toHeatingCoolingState(ds))
         .orElse(0));
 
-    this.service.getCharacteristic(Characteristic.TargetHeatingCoolingState)
+    this.thermostatService.getCharacteristic(Characteristic.TargetHeatingCoolingState)
       .onGet(() => new Option(this.deviceStatus)
         .map(ds => mapper.toHeatingCoolingState(ds))
         .orElse(0))
-      .onSet(setTargetHeatingCoolingState(client, device));
+      .onSet(async (value: CharacteristicValue) => {
+        const targetState = (value === 0) ? 'standby' : 'active';
+        return client.setThermalControlStatus(device.id, targetState)
+          .then(r => this.updateControlFromResponse(r));
+      });
 
-    this.service.getCharacteristic(Characteristic.CurrentTemperature)
+    this.thermostatService.getCharacteristic(Characteristic.CurrentTemperature)
       .onGet(() =>
         new Option(this.deviceStatus)
           .map(ds => ds.status.water_temperature_c)
           .orElse(-270));
 
-    this.service.getCharacteristic(Characteristic.TargetTemperature)
+    this.thermostatService.getCharacteristic(Characteristic.TargetTemperature)
       .onGet(() => new Option(this.deviceStatus)
         .map(ds => ds.control.set_temperature_c)
         .orElse(10))
-      .onSet(setTargetTemperature(client, device));
+      .onSet(async (value: CharacteristicValue) => {
+        const tempF = Math.floor((value as number * (9/5)) + 32);
+        return client.setTemperatureFahrenheit(device.id, tempF)
+          .then(r => this.updateControlFromResponse(r));
+      });
 
-    this.service.getCharacteristic(Characteristic.TemperatureDisplayUnits)
+    this.thermostatService.getCharacteristic(Characteristic.TemperatureDisplayUnits)
       .onGet(() => new Option(this.deviceStatus)
         .map(ds => ds.control.display_temperature_unit === 'c' ? 0 : 1)
         .orElse(1));
 
-    this.service.getCharacteristic(Characteristic.StatusLowBattery)
+    this.batteryService.getCharacteristic(Characteristic.StatusLowBattery)
       .onGet(() => new Option(this.deviceStatus)
         .map(ds => ds.status.is_water_low)
         .orElse(false));
-    //
-    // // each service must implement at-minimum the "required characteristics" for the given service type
-    // // see https://developers.homebridge.io/#/service/Lightbulb
-    //
-    // // register handlers for the On/Off Characteristic
-    // this.service.getCharacteristic(this.platform.Characteristic.On)
-    //   .onSet(this.setOn.bind(this))                // SET - bind to the `setOn` method below
-    //   .onGet(this.getOn.bind(this));               // GET - bind to the `getOn` method below
-    //
-    // // register handlers for the Brightness Characteristic
-    // this.service.getCharacteristic(this.platform.Characteristic.Brightness)
-    //   .onSet(this.setBrightness.bind(this));       // SET - bind to the 'setBrightness` method below
 
-    /**
-     * Creating multiple services of the same type.
-     *
-     * To avoid "Cannot add a Service with the same UUID another Service without also defining a unique 'subtype' property." error,
-     * when creating multiple services of the same type, you need to use the following syntax to specify a name and subtype id:
-     * this.accessory.getService('NAME') || this.accessory.addService(this.platform.Service.Lightbulb, 'NAME', 'USER_DEFINED_SUBTYPE_ID');
-     *
-     * The USER_DEFINED_SUBTYPE must be unique to the platform accessory (if you platform exposes multiple accessories, each accessory
-     * can use the same subtype id.)
-     */
+    this.batteryService.getCharacteristic(Characteristic.BatteryLevel)
+      .onGet(() => new Option(this.deviceStatus)
+        .map(ds => ds.status.water_level)
+        .orElse(50));
 
-    // /**
-    //  * Updating characteristics values asynchronously.
-    //  *
-    //  * Example showing how to update the state of a Characteristic asynchronously instead
-    //  * of using the `on('get')` handlers.
-    //  * Here we change update the motion sensor trigger states on and off every 10 seconds
-    //  * the `updateCharacteristic` method.
-    //  *
-    //  */
-    // let motionDetected = false;
-    // setInterval(() => {
-    //   // EXAMPLE - inverse the trigger
-    //   motionDetected = !motionDetected;
-    //
-    //   // push the new value to HomeKit
-    //   motionSensorOneService.updateCharacteristic(this.platform.Characteristic.MotionDetected, motionDetected);
-    //   motionSensorTwoService.updateCharacteristic(this.platform.Characteristic.MotionDetected, !motionDetected);
-    //
-    //   this.platform.log.debug('Triggering motionSensorOneService:', motionDetected);
-    //   this.platform.log.debug('Triggering motionSensorTwoService:', !motionDetected);
-    // }, 10000);
+    this.scheduleNextCheck(() => client.getDeviceStatus(device.id)
+      .then(res => res.data));
   }
 
-  /**
-   * Handle "SET" requests from HomeKit
-   * These are sent when the user changes the state of an accessory, for example, turning on a Light bulb.
-   //  */
-  // async setOn(value: CharacteristicValue) {
-  //   // implement your own code to turn your device on/off
-  //   this.exampleStates.On = value as boolean;
-  //
-  //   this.platform.log.debug('Set Characteristic On ->', value);
-  // }
+  private scheduleNextCheck(poller: () => Promise<DeviceStatus>) {
+    const timeSinceLastInteractionMS = new Date().valueOf() - this.lastInteractionTime.valueOf();
+    clearTimeout(this.timeout);
+    this.timeout = setTimeout(() => {
+      this.platform.log('polling at: ' + new Date());
+      poller().then(s => {
+        this.deviceStatus = s;
+        this.publishUpdates();
+      }).then(() => {
+        this.scheduleNextCheck(poller);
+      });
+    }, timeSinceLastInteractionMS < POLLING_RECENCY_THRESHOLD_MS ? FAST_POLLING_INTERVAL_MS : SLOW_POLLING_INTERVAL_MS);
+  }
 
-  /**
-   * Handle the "GET" requests from HomeKit
-   * These are sent when HomeKit wants to know the current state of the accessory, for example, checking if a Light bulb is on.
-   *
-   * GET requests should return as fast as possible. A long delay here will result in
-   * HomeKit being unresponsive and a bad user experience in general.
-   *
-   * If your device takes time to respond you should update the status of your device
-   * asynchronously instead using the `updateCharacteristic` method instead.
+  private updateControlFromResponse(response: { data: Control }) {
+    this.deviceStatus && (this.deviceStatus.control = response.data);
+    this.lastInteractionTime = new Date();
+    this.publishUpdates();
+  }
 
-   * @example
-   * this.service.updateCharacteristic(this.platform.Characteristic.On, true)
-   */
-  // async getOn(): Promise<CharacteristicValue> {
-  //   // implement your own code to check if the device is on
-  //   const isOn = this.exampleStates.On;
-  //
-  //   this.platform.log.debug('Get Characteristic On ->', isOn);
-  //
-  //   // if you need to return an error to show the device as "Not Responding" in the Home app:
-  //   // throw new this.platform.api.hap.HapStatusError(this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE);
-  //
-  //   return isOn;
-  // }
-
-  /**
-   * Handle "SET" requests from HomeKit
-   * These are sent when the user changes the state of an accessory, for example, changing the Brightness
-   */
-  // async setTargetTemperature(value: CharacteristicValue) {
-  //   // implement your own code to set the brightness
-  //    = value as number;
-  //    return new Client(this.ap.
-  //   this.platform.log.debug('Set Characteristic Brightness -> ', value);
-  // }
-
+  private publishUpdates() {
+    const s = this.deviceStatus;
+    if (!s) {
+      return;
+    }
+    const {Characteristic} = this.platform;
+    const mapper = newMapper(this.platform);
+    this.batteryService.updateCharacteristic(Characteristic.BatteryLevel, s.status.water_level);
+    this.batteryService.updateCharacteristic(Characteristic.StatusLowBattery, s.status.is_water_low);
+    this.thermostatService.updateCharacteristic(Characteristic.TemperatureDisplayUnits, s.control.display_temperature_unit === 'c' ? 0 : 1);
+    this.thermostatService.updateCharacteristic(Characteristic.CurrentHeatingCoolingState, mapper.toHeatingCoolingState(s));
+    this.thermostatService.updateCharacteristic(Characteristic.TargetHeatingCoolingState, mapper.toHeatingCoolingState(s));
+    this.thermostatService.updateCharacteristic(Characteristic.CurrentTemperature, s.status.water_temperature_c);
+    this.thermostatService.updateCharacteristic(Characteristic.TargetTemperature, s.control.set_temperature_c);
+  }
 }

@@ -53,7 +53,7 @@ function parseBody(req: InstanceType<typeof IncomingMessage>): Promise<string> {
 
 export function start(): FakeServer {
   const hostname = '127.0.0.1';
-  const port = 3000;
+  const port = Math.floor(Math.random() * 1000) + 12000;
   const token = crypto.randomBytes(20).toString('hex');
   const devices: Device[] = [{
     attachments: [],
