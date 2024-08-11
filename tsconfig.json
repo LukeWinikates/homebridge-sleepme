@@ -19,6 +19,8 @@
   "include": [
     "eslint.config.mjs",
     "homebridge-ui",
-    "src",
-  ]
+    "src"
+  ],
+  "exclude": ["src/sleepme/client.test.ts", "src/fakeserver/*"],
+  "files": ["src/index.ts"]
 }
