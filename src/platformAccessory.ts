@@ -103,8 +103,12 @@ export class SleepMePlatformAccessory {
         .orElse(0))
       .onSet(async (value: CharacteristicValue) => {
         const targetState = (value === 0) ? 'standby' : 'active';
+        this.platform.log(`setting TargetHeatingCoolingState for ${this.accessory.displayName} to ${targetState} (${value})`)
         return client.setThermalControlStatus(device.id, targetState)
-          .then(r => this.updateControlFromResponse(r));
+          .then(r => {
+            this.platform.log(`response: ${r.status}`)
+            this.updateControlFromResponse(r);
+          });
       });
 
     this.thermostatService.getCharacteristic(Characteristic.CurrentTemperature)
@@ -119,8 +123,12 @@ export class SleepMePlatformAccessory {
         .orElse(10))
       .onSet(async (value: CharacteristicValue) => {
         const tempF = Math.floor((value as number * (9/5)) + 32);
+        this.platform.log(`setting TargetTemperature for ${this.accessory.displayName} to ${tempF} (${value})`)
         return client.setTemperatureFahrenheit(device.id, tempF)
-          .then(r => this.updateControlFromResponse(r));
+          .then(r => {
+            this.platform.log(`response: ${r.status}`)
+            this.updateControlFromResponse(r);
+          });
       });
 
     this.thermostatService.getCharacteristic(Characteristic.TemperatureDisplayUnits)
@@ -138,15 +146,20 @@ export class SleepMePlatformAccessory {
         .map(ds => ds.status.water_level)
         .orElse(50));
 
-    this.scheduleNextCheck(() => client.getDeviceStatus(device.id)
-      .then(res => res.data));
+    this.scheduleNextCheck(async () => {
+      this.platform.log(`polling device status for ${this.accessory.displayName}`)
+      const r = await client.getDeviceStatus(device.id);
+      this.platform.log(`response: ${r.status}`)
+      return r.data
+    });
   }
 
   private scheduleNextCheck(poller: () => Promise<DeviceStatus>) {
     const timeSinceLastInteractionMS = new Date().valueOf() - this.lastInteractionTime.valueOf();
     clearTimeout(this.timeout);
     this.timeout = setTimeout(() => {
-      this.platform.log('polling at: ' + new Date());
+      this.platform.log(`polling at: ${new Date()}`);
+      this.platform.log(`last interaction at: ${this.lastInteractionTime}`);
       poller().then(s => {
         this.deviceStatus = s;
         this.publishUpdates();
@@ -157,7 +170,9 @@ export class SleepMePlatformAccessory {
   }
 
   private updateControlFromResponse(response: { data: Control }) {
-    this.deviceStatus && (this.deviceStatus.control = response.data);
+    if (this.deviceStatus) {
+      this.deviceStatus.control = response.data;
+    }
     this.lastInteractionTime = new Date();
     this.publishUpdates();
   }

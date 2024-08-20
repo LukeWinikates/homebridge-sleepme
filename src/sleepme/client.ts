@@ -2,6 +2,7 @@ import axios from 'axios';
 
 type ClientResponse<T> = {
   data: T;
+  status: number;
 };
 
 export class Client {
