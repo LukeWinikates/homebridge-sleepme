@@ -106,7 +106,7 @@ export class SleepMePlatformAccessory {
         this.platform.log(`setting TargetHeatingCoolingState for ${this.accessory.displayName} to ${targetState} (${value})`)
         return client.setThermalControlStatus(device.id, targetState)
           .then(r => {
-            this.platform.log(`response: ${r.status}`)
+            this.platform.log(`response (${this.accessory.displayName}): ${r.status}`)
             this.updateControlFromResponse(r);
           });
       });
@@ -126,7 +126,7 @@ export class SleepMePlatformAccessory {
         this.platform.log(`setting TargetTemperature for ${this.accessory.displayName} to ${tempF} (${value})`)
         return client.setTemperatureFahrenheit(device.id, tempF)
           .then(r => {
-            this.platform.log(`response: ${r.status}`)
+            this.platform.log(`response (${this.accessory.displayName}): ${r.status}`)
             this.updateControlFromResponse(r);
           });
       });
@@ -149,7 +149,7 @@ export class SleepMePlatformAccessory {
     this.scheduleNextCheck(async () => {
       this.platform.log(`polling device status for ${this.accessory.displayName}`)
       const r = await client.getDeviceStatus(device.id);
-      this.platform.log(`response: ${r.status}`)
+      this.platform.log(`response (${this.accessory.displayName}): ${r.status}`)
       return r.data
     });
   }
