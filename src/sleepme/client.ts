@@ -1,4 +1,4 @@
-import axios from 'axios';
+import axios, {AxiosInstance} from 'axios';
 
 type ClientResponse<T> = {
   data: T;
@@ -7,11 +7,11 @@ type ClientResponse<T> = {
 
 export class Client {
   readonly token: string;
-  private readonly baseURL: string;
+  private readonly axiosClient: AxiosInstance
 
   constructor(token: string, baseURL = 'https://api.developer.sleep.me') {
     this.token = token;
-    this.baseURL = baseURL;
+    this.axiosClient = axios.create({baseURL: baseURL});
   }
 
   headers(): object {
@@ -21,27 +21,27 @@ export class Client {
   }
 
   listDevices(): Promise<ClientResponse<Device[]>> {
-    return axios.get<Device[]>(this.baseURL + '/v1/devices',
+    return this.axiosClient.get<Device[]>('/v1/devices',
       {headers: this.headers()});
   }
 
   getDeviceStatus(id: string): Promise<ClientResponse<DeviceStatus>> {
-    return axios.get<DeviceStatus>(this.baseURL + '/v1/devices/' + id,
+    return this.axiosClient.get<DeviceStatus>('/v1/devices/' + id,
       {headers: this.headers()});
   }
 
   setTemperatureFahrenheit(id: string, temperature: number): Promise<ClientResponse<Control>> {
-    return axios.patch<Control>(this.baseURL + '/v1/devices/' + id, {set_temperature_f: temperature},
+    return this.axiosClient.patch<Control>('/v1/devices/' + id, {set_temperature_f: temperature},
       {headers: this.headers()});
   }
 
   setTemperatureCelsius(id: string, temperature: number): Promise<ClientResponse<Control>> {
-    return axios.patch<Control>(this.baseURL + '/v1/devices/' + id, {set_temperature_c: temperature},
+    return this.axiosClient.patch<Control>('/v1/devices/' + id, {set_temperature_c: temperature},
       {headers: this.headers()});
   }
 
   setThermalControlStatus(id: string, targetState: 'standby' | 'active'): Promise<ClientResponse<Control>> {
-    return axios.patch<Control>(this.baseURL + '/v1/devices/' + id, {thermal_control_status: targetState},
+    return this.axiosClient.patch<Control>('/v1/devices/' + id, {thermal_control_status: targetState},
       {headers: this.headers()});
   }
 }
