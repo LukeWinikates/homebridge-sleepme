@@ -1,5 +1,5 @@
 {
-  "pluginAlias": "SleepMeHomebridgePlugin",
+  "pluginAlias": "SleepmeHomebridgePlugin",
   "pluginType": "platform",
   "singular": true,
   "schema": {
