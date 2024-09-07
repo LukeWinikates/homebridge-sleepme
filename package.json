@@ -1,6 +1,6 @@
 {
   "private": false,
-  "displayName": "SleepMe Homebridge",
+  "displayName": "Sleepme Homebridge",
   "name": "homebridge-sleepme",
   "version": "0.1.2",
   "description": "HomeKit support for Sleepme Dock Pro devices via Homebridge",

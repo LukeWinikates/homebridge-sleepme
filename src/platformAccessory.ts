@@ -1,6 +1,6 @@
 import {CharacteristicValue, PlatformAccessory, Service} from 'homebridge';
 
-import {SleepMePlatform} from './platform.js';
+import {SleepmePlatform} from './platform.js';
 import {Client, Control, Device, DeviceStatus} from './sleepme/client.js';
 
 type SleepMeContext = {
@@ -12,7 +12,7 @@ interface Mapper {
   toHeatingCoolingState: (status: DeviceStatus) => 0 | 2;
 }
 
-function newMapper(platform: SleepMePlatform): Mapper {
+function newMapper(platform: SleepmePlatform): Mapper {
   const {Characteristic} = platform;
   return {
     toHeatingCoolingState: (status: DeviceStatus): 0 | 2 => {
@@ -62,7 +62,7 @@ export class SleepMePlatformAccessory {
   private timeout: NodeJS.Timeout | undefined;
 
   constructor(
-    private readonly platform: SleepMePlatform,
+    private readonly platform: SleepmePlatform,
     private readonly accessory: PlatformAccessory,
   ) {
     this.lastInteractionTime = new Date();

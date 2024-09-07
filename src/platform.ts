@@ -16,7 +16,7 @@ type PluginConfig = {
 // to start discovery of new accessories.
 const didFinishLaunching = 'didFinishLaunching';
 
-export class SleepMePlatform implements DynamicPlatformPlugin {
+export class SleepmePlatform implements DynamicPlatformPlugin {
   public readonly Service: typeof Service;
   public readonly Characteristic: typeof Characteristic;
 
