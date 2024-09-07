@@ -6,8 +6,6 @@ src
 # gitHub actions
 .github
 
-# eslint
-.eslintrc
 
 # typescript
 tsconfig.json
@@ -42,19 +40,6 @@ lib-cov
 coverage
 *.lcov
 
-# nyc test coverage
-.nyc_output
-
-# Grunt intermediate storage (https://gruntjs.com/creating-plugins#storing-task-files)
-.grunt
-
-# Bower dependency directory (https://bower.io/)
-bower_components
-
-# node-waf configuration
-.lock-wscript
-
-# Compiled binary addons (https://nodejs.org/api/addons.html)
 build/Release
 
 # Dependency directories
@@ -102,42 +87,17 @@ web_modules/
 # Nuxt.js build / generate output
 .nuxt
 
-# Gatsby files
-.cache/
-# Comment in the public line in if your project uses Gatsby and not Next.js
-# https://nextjs.org/blog/next-9-1#public-directory-support
-# public
 
-# vuepress build output
-.vuepress/dist
 
-# Serverless directories
-.serverless/
-
-# FuseBox cache
-.fusebox/
-
-# DynamoDB Local files
-.dynamodb/
-
-# TernJS port file
-.tern-port
-
-# Stores VSCode versions used for testing VSCode extensions
-.vscode-test
-
-# yarn v2
-
-.yarn/cache
-.yarn/unplugged
-.yarn/build-state.yml
-.pnp.*
-
-src/
-tmp/
 .envrc
-.nvmrc
 .idea/
+.nvmrc
+.release-it.json
+babel.config.cjs
+config.schema.json
 dist/fakeserver
 dist/sleepme/*test*
+eslint.config.mjs
 jest.config.ts
+src/
+tmp/
