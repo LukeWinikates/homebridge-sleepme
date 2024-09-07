@@ -1,6 +1,6 @@
-# Ignore compiled code
+.DS_Store
 dist
 .idea
 .envrc
 tmp/
-node_modules
+node_modules/
