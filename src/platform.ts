@@ -3,7 +3,7 @@ import {API, DynamicPlatformPlugin, Logging, PlatformAccessory, Service, Charact
 import {Client} from './sleepme/client.js';
 
 import {PLATFORM_NAME, PLUGIN_NAME} from './settings.js';
-import {SleepMePlatformAccessory} from './platformAccessory.js';
+import {SleepmePlatformAccessory} from './platformAccessory.js';
 
 type PluginConfig = {
   api_keys: string[];
@@ -74,7 +74,7 @@ export class SleepmePlatform implements DynamicPlatformPlugin {
 
             // create the accessory handler for the restored accessory
             // this is imported from `platformAccessory.ts`
-            new SleepMePlatformAccessory(this, existingAccessory);
+            new SleepmePlatformAccessory(this, existingAccessory);
 
             // it is possible to remove platform accessories at any time using `api.unregisterPlatformAccessories`, e.g.:
             // remove platform accessories when no longer present
@@ -93,7 +93,7 @@ export class SleepmePlatform implements DynamicPlatformPlugin {
 
             // create the accessory handler for the newly create accessory
             // this is imported from `platformAccessory.ts`
-            new SleepMePlatformAccessory(this, accessory);
+            new SleepmePlatformAccessory(this, accessory);
             // link the accessory to your platform
             this.api.registerPlatformAccessories(PLUGIN_NAME, PLATFORM_NAME, [accessory]);
           }

@@ -3,7 +3,7 @@ import {CharacteristicValue, PlatformAccessory, Service} from 'homebridge';
 import {SleepmePlatform} from './platform.js';
 import {Client, Control, Device, DeviceStatus} from './sleepme/client.js';
 
-type SleepMeContext = {
+type SleepmeContext = {
   device: Device;
   apiKey: string;
 };
@@ -54,7 +54,7 @@ const POLLING_RECENCY_THRESHOLD_MS = 5 * 1000;
  * An instance of this class is created for each accessory your platform registers
  * Each accessory may expose multiple services of different thermostatService types.
  */
-export class SleepMePlatformAccessory {
+export class SleepmePlatformAccessory {
   private thermostatService: Service;
   private batteryService: Service;
   private deviceStatus: DeviceStatus | null;
@@ -67,7 +67,7 @@ export class SleepMePlatformAccessory {
   ) {
     this.lastInteractionTime = new Date();
     const {Characteristic, Service} = this.platform;
-    const {apiKey, device} = this.accessory.context as SleepMeContext;
+    const {apiKey, device} = this.accessory.context as SleepmeContext;
     const client = new Client(apiKey);
     this.deviceStatus = null;
     const mapper = newMapper(platform);
@@ -77,7 +77,7 @@ export class SleepMePlatformAccessory {
 
     // set accessory information
     this.accessory.getService(Service.AccessoryInformation)!
-      .setCharacteristic(Characteristic.Manufacturer, 'SleepMe')
+      .setCharacteristic(Characteristic.Manufacturer, 'Sleepme')
       .setCharacteristic(Characteristic.Model, 'Dock Pro')
       .setCharacteristic(Characteristic.SerialNumber, device.id);
 
