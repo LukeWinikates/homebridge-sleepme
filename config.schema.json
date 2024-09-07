@@ -2,6 +2,7 @@
   "pluginAlias": "SleepmeHomebridgePlugin",
   "pluginType": "platform",
   "singular": true,
+  "headerDisplay": "To create Sleepme API keys, set up a developer account [here](https://docs.developer.sleep.me/docs/)",
   "schema": {
     "type": "object",
     "properties": {
