@@ -122,7 +122,7 @@ export class SleepmePlatformAccessory {
         .map(ds => ds.control.set_temperature_c)
         .orElse(10))
       .onSet(async (value: CharacteristicValue) => {
-        const tempF = Math.floor((value as number * (9/5)) + 32);
+        const tempF = Math.floor((value as number * (9 / 5)) + 32);
         this.platform.log(`setting TargetTemperature for ${this.accessory.displayName} to ${tempF} (${value})`)
         return client.setTemperatureFahrenheit(device.id, tempF)
           .then(r => {
@@ -182,6 +182,10 @@ export class SleepmePlatformAccessory {
     if (!s) {
       return;
     }
+    this.platform.log(`${this.accessory.displayName}: ${JSON.stringify({
+      status: s.status,
+      control: s.control,
+    }, null, 2)}`)
     const {Characteristic} = this.platform;
     const mapper = newMapper(this.platform);
     this.batteryService.updateCharacteristic(Characteristic.BatteryLevel, s.status.water_level);
