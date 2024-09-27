@@ -5,10 +5,20 @@ import {Client} from './sleepme/client.js';
 import {PLATFORM_NAME, PLUGIN_NAME} from './settings.js';
 import {SleepmePlatformAccessory} from './platformAccessory.js';
 
-type PluginConfig = {
+export type PluginConfig = {
   api_keys: string[];
   platform: string;
 };
+
+const validateConfig = (config: unknown):[boolean, string] => {
+  if(!config.api_keys || !Array.isArray(config.api_keys)) {
+    return [false, "No API keys configured - plugin will not start"]
+  }
+  if (config.api_keys.some(s => typeof s !== 'string')) {
+    return [false, "Some API keys are invalid"]
+  }
+  return [true, '']
+}
 
 // When this event is fired it means Homebridge has restored all cached accessories from disk.
 // Dynamic Platform plugins should only register new accessories after this event was fired,
@@ -30,6 +40,12 @@ export class SleepmePlatform implements DynamicPlatformPlugin {
   ) {
     this.Service = api.hap.Service;
     this.Characteristic = api.hap.Characteristic;
+
+    const [validConfig, message] = validateConfig(this.config);
+    if (!validConfig) {
+      this.log.error(message)
+      return
+    }
 
     this.log.debug('Finished initializing platform:', config.platform);
     if (!log.success) {
