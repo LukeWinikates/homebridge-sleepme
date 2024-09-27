@@ -10,11 +10,11 @@ export type PluginConfig = {
   platform: string;
 };
 
-const validateConfig = (config: unknown):[boolean, string] => {
+const validateConfig = (config: any):[boolean, string] => {
   if(!config.api_keys || !Array.isArray(config.api_keys)) {
     return [false, "No API keys configured - plugin will not start"]
   }
-  if (config.api_keys.some(s => typeof s !== 'string')) {
+  if (config.api_keys.some((s:unknown) => typeof s !== 'string')) {
     return [false, "Some API keys are invalid"]
   }
   return [true, '']
