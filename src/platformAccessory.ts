@@ -182,10 +182,13 @@ export class SleepmePlatformAccessory {
     if (!s) {
       return;
     }
-    this.platform.log(`${this.accessory.displayName}: ${JSON.stringify({
-      status: s.status,
-      control: s.control,
-    }, null, 2)}`)
+    this.platform.log(
+      `[device] ${this.accessory.displayName}
+      [connected?] ${s.status.is_connected}
+      [status] ${s.control.thermal_control_status}
+      [temperature] ${s.status.water_temperature_f}f/${s.status.water_temperature_c}c
+      [target] ${s.control.set_temperature_f}f/${s.control.set_temperature_c}c`,
+    )
     const {Characteristic} = this.platform;
     const mapper = newMapper(this.platform);
     this.batteryService.updateCharacteristic(Characteristic.BatteryLevel, s.status.water_level);
