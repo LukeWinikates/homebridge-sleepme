@@ -6,6 +6,13 @@ updates:
       interval: "weekly"
     ignore:
       - dependency-name: "@types/node"
+    groups:
+      build:
+        patterns:
+          - "*eslint*"
+          - "*babel*"
+          - "*typescript*"
+          - "*release-it*"
     open-pull-requests-limit: 20
   - package-ecosystem: "github-actions"
     directory: "/"
