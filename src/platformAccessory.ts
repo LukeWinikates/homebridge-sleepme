@@ -41,7 +41,7 @@ class Option<T> {
     if (!this.value) {
       return elseValue;
     }
-    return this.value as T;
+    return this.value as unknown as T;
   }
 }
 
