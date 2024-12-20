@@ -16,9 +16,16 @@ function newMapper(platform: SleepmePlatform): Mapper {
   const {Characteristic} = platform;
   return {
     toHeatingCoolingState: (status: DeviceStatus): 0 | 2 => {
-      return status.control.thermal_control_status === 'standby' ?
-        Characteristic.CurrentHeatingCoolingState.OFF :
-        Characteristic.CurrentHeatingCoolingState.COOL;
+      if (status.control.thermal_control_status === 'standby') {
+        return Characteristic.CurrentHeatingCoolingState.OFF;
+      }
+      
+      // Determine if it's heating or cooling based on temperatures
+      if (status.control.current_temperature < status.control.target_temperature) {
+        return Characteristic.CurrentHeatingCoolingState.HEAT;
+      } else {
+        return Characteristic.CurrentHeatingCoolingState.COOL;
+      }
     },
   };
 }
