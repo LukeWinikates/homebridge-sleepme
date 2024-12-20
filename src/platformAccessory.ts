@@ -9,19 +9,23 @@ type SleepmeContext = {
 };
 
 interface Mapper {
-  toHeatingCoolingState: (status: DeviceStatus) => 0 | 2;
+  toHeatingCoolingState: (status: DeviceStatus) => 0 | 1 | 2;
 }
 
 function newMapper(platform: SleepmePlatform): Mapper {
   const {Characteristic} = platform;
   return {
-    toHeatingCoolingState: (status: DeviceStatus): 0 | 2 => {
+    toHeatingCoolingState: (status: DeviceStatus): 0 | 1 | 2 => {
+      // If the device is off, return OFF state
       if (status.control.thermal_control_status === 'standby') {
         return Characteristic.CurrentHeatingCoolingState.OFF;
       }
       
-      // Determine if it's heating or cooling based on temperatures
-      if (status.control.current_temperature < status.control.target_temperature) {
+      // Compare current and target temperatures to determine heating or cooling
+      const currentTemp = status.status.water_temperature_c;
+      const targetTemp = status.control.set_temperature_c;
+      
+      if (targetTemp > currentTemp) {
         return Characteristic.CurrentHeatingCoolingState.HEAT;
       } else {
         return Characteristic.CurrentHeatingCoolingState.COOL;
@@ -30,6 +34,7 @@ function newMapper(platform: SleepmePlatform): Mapper {
   };
 }
 
+// Rest of the code remains exactly the same from here...
 class Option<T> {
   readonly value: T | null;
 
