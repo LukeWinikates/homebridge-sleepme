@@ -18,6 +18,7 @@
   },
   "include": [
     "eslint.config.mjs",
+    "node_modules/hap-nodejs/@types/",
     "homebridge-ui",
     "src"
   ],
