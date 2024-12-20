@@ -9,16 +9,16 @@ type SleepmeContext = {
 };
 
 interface Mapper {
-  toHeatingCoolingState: (status: DeviceStatus) => 0 | 2;
+  toHeatingCoolingState: (status: DeviceStatus) => 0 | 3;
 }
 
 function newMapper(platform: SleepmePlatform): Mapper {
   const {Characteristic} = platform;
   return {
-    toHeatingCoolingState: (status: DeviceStatus): 0 | 2 => {
+    toHeatingCoolingState: (status: DeviceStatus): 0 | 3 => {
       return status.control.thermal_control_status === 'standby' ?
         Characteristic.CurrentHeatingCoolingState.OFF :
-        Characteristic.CurrentHeatingCoolingState.COOL;
+        3;
     },
   };
 }
@@ -112,10 +112,12 @@ export class SleepmePlatformAccessory {
       });
 
     this.thermostatService.getCharacteristic(Characteristic.CurrentTemperature)
-      .onGet(() =>
-        new Option(this.deviceStatus)
+      .onGet(() => {
+        this.platform.log(`onGet CurrentTemperature ${this.accessory.displayName}`)
+        return new Option(this.deviceStatus)
           .map(ds => ds.status.water_temperature_c)
-          .orElse(-270));
+          .orElse(-270);
+      });
 
     this.thermostatService.getCharacteristic(Characteristic.TargetTemperature)
       .onGet(() => new Option(this.deviceStatus)
