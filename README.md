@@ -12,7 +12,7 @@ This is not an official Sleepme or Apple product, and may stop working without p
 * Dedicated "high" temperature mode virtual switch.
 * Get low water level warnings in Home app.
 
-![main screen](https://i.imgur.com/B1jF4X2.png) ![virtual switches](https://i.imgur.com/XCS6fLT.png)
+![main screen](https://i.imgur.com/B1jF4X2.png) ![virtual switches](https://i.imgur.com/XCS6fLT.png) ![automation example](https://i.imgur.com/hUdXZ1C.png)
 
 ## Setup
 
@@ -43,6 +43,14 @@ There are additional configuration options that can be set to tailor the plugin 
 * **Low Water Level Alert Type**: _None, battery, leak, or motion_. Select the type of virtual sensor that will be generated to represent the water level of your device. By default, "battery" is used and the water level will be represented as the thermostat device's battery level. Leak sensor or motion sensor may be preferable for purposes of using Apple home automations triggered by "leak detected" or "motion detected".
 * **Virtual Temperature Boost Switch**: Adds 20 degrees to the target temperature. Homekit thermostats only support target temperatures up to 100F, while the Sleepme Dock supports up to 115. In order to utilize this temperature range of the dock, you can turn on this virtual temperature boost switch to add 20 degrees to whatever temperature you choose. For example, if you want to heat to 110F, you'd turn on the temperature boost switch AND set the thermostat to 90. It will tell the dock to warm to 110. If you turn the switch off, it'll set back to 90. This switch is not enabled by default to prevent confusion. If you understand and want to use it, enable it in the plugin config.
 * **API Polling Interval**: This value represents how many minutes the plugin will wait between each poll of the sleepme API to update the devices' status. This interval is automatically faster/shorter for a period of time after you control the thermostat, so this configuration value is for the slow/idle polling time. By default it's 15 minutes. If you want more frequent updates, lower the number. If you get errors or rate limits, increase the number. Keep in mind the number of API calls made is multiplied by the number of devices you have. If you have two docks, two API calls are made at each interval.
+
+## Automation Examples
+
+* Automatically turn your dock ON, but only if you're home.
+* Automatically turn your dock ON immediately, if you return home after the above automation's time.
+* Automatically turn your dock OFF in the morning when a presence sensor detects that you've left the bedroom.
+* Adjust the temperature of your dock based on the temperature in your bedroom or outside.
+* Have Siri remind you to top off the water in your dock once per day if the water level is low.
 
 ## Notes
 
