@@ -67,7 +67,7 @@ const POLLING_RECENCY_THRESHOLD_MS = 5 * 1000;
  */
 export class SleepmePlatformAccessory {
   private thermostatService: Service;
-  private batteryService: Service;
+  private leakSensorService: Service;
   private deviceStatus: DeviceStatus | null;
   private lastInteractionTime: Date;
   private timeout: NodeJS.Timeout | undefined;
@@ -95,14 +95,21 @@ export class SleepmePlatformAccessory {
     client.getDeviceStatus(device.id)
       .then(statusResponse => {
         this.deviceStatus = statusResponse.data;
-        // Initialize the device state after getting initial status
         this.publishUpdates();
       });
 
     this.thermostatService = this.accessory.getService(Service.Thermostat) ||
       this.accessory.addService(Service.Thermostat, `${this.accessory.displayName} - Dock Pro`);
-    this.batteryService = this.accessory.getService(Service.Battery) ||
-      this.accessory.addService(Service.Battery, `${this.accessory.displayName} - Dock Pro Water Level`);
+
+    // Replace battery service with leak sensor service
+    this.leakSensorService = this.accessory.getService(Service.LeakSensor) ||
+      this.accessory.addService(Service.LeakSensor, `${this.accessory.displayName} - Water Level`);
+
+    // Remove the battery service if it exists from previous version
+    const batteryService = this.accessory.getService(Service.Battery);
+    if (batteryService) {
+      this.accessory.removeService(batteryService);
+    }
 
     // create handlers for required characteristics
     this.thermostatService.getCharacteristic(Characteristic.CurrentHeatingCoolingState)
@@ -149,15 +156,13 @@ export class SleepmePlatformAccessory {
         .map(ds => ds.control.display_temperature_unit === 'c' ? 0 : 1)
         .orElse(1));
 
-    this.batteryService.getCharacteristic(Characteristic.StatusLowBattery)
+    // Set up leak sensor characteristic
+    this.leakSensorService.getCharacteristic(Characteristic.LeakDetected)
       .onGet(() => new Option(this.deviceStatus)
-        .map(ds => ds.status.is_water_low)
-        .orElse(false));
-
-    this.batteryService.getCharacteristic(Characteristic.BatteryLevel)
-      .onGet(() => new Option(this.deviceStatus)
-        .map(ds => ds.status.water_level)
-        .orElse(50));
+        .map(ds => ds.status.is_water_low ? 
+          Characteristic.LeakDetected.LEAK_DETECTED : 
+          Characteristic.LeakDetected.LEAK_NOT_DETECTED)
+        .orElse(Characteristic.LeakDetected.LEAK_NOT_DETECTED));
 
     this.scheduleNextCheck(async () => {
       this.platform.log(`polling device status for ${this.accessory.displayName}`)
@@ -174,7 +179,6 @@ export class SleepmePlatformAccessory {
       this.platform.log(`polling at: ${new Date()}`);
       this.platform.log(`last interaction at: ${this.lastInteractionTime}`);
       poller().then(s => {
-        // Update device status before publishing updates
         this.deviceStatus = s;
         this.publishUpdates();
         this.platform.log(`Current thermal control status: ${s.control.thermal_control_status}`);
@@ -203,23 +207,30 @@ export class SleepmePlatformAccessory {
       [connected?] ${s.status.is_connected}
       [status] ${s.control.thermal_control_status}
       [temperature] ${s.status.water_temperature_f}f/${s.status.water_temperature_c}c
-      [target] ${s.control.set_temperature_f}f/${s.control.set_temperature_c}c`,
+      [target] ${s.control.set_temperature_f}f/${s.control.set_temperature_c}c
+      [water level] ${s.status.water_level}%
+      [water low] ${s.status.is_water_low}`,
     )
     const {Characteristic} = this.platform;
     const mapper = newMapper(this.platform);
     
-    // Get the current heating/cooling state
     const currentState = mapper.toHeatingCoolingState(s);
     
-    this.batteryService.updateCharacteristic(Characteristic.BatteryLevel, s.status.water_level);
-    this.batteryService.updateCharacteristic(Characteristic.StatusLowBattery, s.status.is_water_low);
+    // Update leak sensor
+    this.leakSensorService.updateCharacteristic(
+      Characteristic.LeakDetected,
+      s.status.is_water_low ? 
+        Characteristic.LeakDetected.LEAK_DETECTED : 
+        Characteristic.LeakDetected.LEAK_NOT_DETECTED
+    );
+
     this.thermostatService.updateCharacteristic(Characteristic.TemperatureDisplayUnits, s.control.display_temperature_unit === 'c' ? 0 : 1);
     this.thermostatService.updateCharacteristic(Characteristic.CurrentHeatingCoolingState, currentState);
     this.thermostatService.updateCharacteristic(Characteristic.TargetHeatingCoolingState, currentState);
     this.thermostatService.updateCharacteristic(Characteristic.CurrentTemperature, s.status.water_temperature_c);
     this.thermostatService.updateCharacteristic(Characteristic.TargetTemperature, s.control.set_temperature_c);
     
-    // Log the state change
     this.platform.log(`Updated heating/cooling state to: ${currentState} (0=OFF, 1=HEAT, 2=COOL)`);
+    this.platform.log(`Water level low: ${s.status.is_water_low}`);
   }
 }
