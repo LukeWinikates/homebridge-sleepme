@@ -13,13 +13,13 @@ interface PlatformConfig {
   virtual_temperature_boost_switch?: boolean;
 }
 
-// ... (keeping mapper and other interfaces unchanged)
+// ... (keeping Mapper interface and newMapper function unchanged)
 
 export class SleepmePlatformAccessory {
   private thermostatService: Service;
   private waterLevelService: Service;
   private highModeService: Service;
-  private tempBoostService?: Service; // Made optional
+  private tempBoostService?: Service;
   private deviceStatus: DeviceStatus | null;
   private lastInteractionTime: Date;
   private timeout: NodeJS.Timeout | undefined;
@@ -43,17 +43,109 @@ export class SleepmePlatformAccessory {
     const config = this.platform.config as PlatformConfig;
     this.waterLevelType = config.water_level_type || 'battery';
     this.hasTemperatureBoost = config.virtual_temperature_boost_switch === true;
-    
+
     if (this.hasTemperatureBoost) {
       this.platform.log.debug('Temperature boost switch enabled in config');
     }
 
-    // ... (keeping existing initialization code)
+    // Initialize service bindings first
+    this.thermostatService = this.accessory.getService(Service.Thermostat) ||
+      this.accessory.addService(Service.Thermostat, `${this.accessory.displayName} - Dock Pro`);
 
-    // Add HIGH mode switch service (always enabled)
     this.highModeService = this.accessory.getService('High Mode') ||
       this.accessory.addService(Service.Switch, 'High Mode', 'high-mode');
 
+    // Remove any existing water level services first
+    const existingBatteryService = this.accessory.getService(Service.Battery);
+    const existingLeakService = this.accessory.getService(Service.LeakSensor);
+    const existingMotionService = this.accessory.getService(Service.MotionSensor);
+    const existingBoostService = this.accessory.getService('Temperature Boost');
+    
+    if (existingBatteryService) {
+      this.accessory.removeService(existingBatteryService);
+    }
+    if (existingLeakService) {
+      this.accessory.removeService(existingLeakService);
+    }
+    if (existingMotionService) {
+      this.accessory.removeService(existingMotionService);
+    }
+    if (existingBoostService && !this.hasTemperatureBoost) {
+      this.accessory.removeService(existingBoostService);
+    }
+
+    // Add the appropriate water level service based on configuration
+    if (this.waterLevelType === 'leak') {
+      this.waterLevelService = this.accessory.addService(
+        Service.LeakSensor,
+        `${this.accessory.displayName} - Water Level`
+      );
+    } else if (this.waterLevelType === 'motion') {
+      this.waterLevelService = this.accessory.addService(
+        Service.MotionSensor,
+        `${this.accessory.displayName} - Water Level`
+      );
+    } else {
+      this.waterLevelService = this.accessory.addService(
+        Service.Battery,
+        `${this.accessory.displayName} - Water Level`
+      );
+    }
+
+    // Set accessory information
+    this.accessory.getService(Service.AccessoryInformation)!
+      .setCharacteristic(Characteristic.Manufacturer, 'Sleepme')
+      .setCharacteristic(Characteristic.Model, 'Dock Pro')
+      .setCharacteristic(Characteristic.SerialNumber, device.id);
+
+    // Initialize all characteristic handlers after services are created
+    this.initializeCharacteristics(client, device);
+
+    // Get initial device status
+    client.getDeviceStatus(device.id)
+      .then(statusResponse => {
+        this.deviceStatus = statusResponse.data;
+        this.publishUpdates();
+      });
+
+    // Set up polling
+    this.scheduleNextCheck(async () => {
+      this.platform.log(`polling device status for ${this.accessory.displayName}`)
+      const r = await client.getDeviceStatus(device.id);
+      this.platform.log(`response (${this.accessory.displayName}): ${r.status}`)
+      return r.data
+    });
+  }
+
+  private initializeCharacteristics(client: Client, device: Device) {
+    const {Characteristic} = this.platform;
+
+    // Initialize water level characteristics based on type
+    if (this.waterLevelType === 'leak') {
+      this.waterLevelService.getCharacteristic(Characteristic.LeakDetected)
+        .onGet(() => new Option(this.deviceStatus)
+          .map(ds => ds.status.is_water_low ? 
+            Characteristic.LeakDetected.LEAK_DETECTED : 
+            Characteristic.LeakDetected.LEAK_NOT_DETECTED)
+          .orElse(Characteristic.LeakDetected.LEAK_NOT_DETECTED));
+    } else if (this.waterLevelType === 'motion') {
+      this.waterLevelService.getCharacteristic(Characteristic.MotionDetected)
+        .onGet(() => new Option(this.deviceStatus)
+          .map(ds => ds.status.is_water_low)
+          .orElse(false));
+    } else {
+      this.waterLevelService.getCharacteristic(Characteristic.StatusLowBattery)
+        .onGet(() => new Option(this.deviceStatus)
+          .map(ds => ds.status.is_water_low)
+          .orElse(false));
+
+      this.waterLevelService.getCharacteristic(Characteristic.BatteryLevel)
+        .onGet(() => new Option(this.deviceStatus)
+          .map(ds => ds.status.water_level)
+          .orElse(50));
+    }
+
+    // Initialize HIGH mode switch characteristics
     this.highModeService.getCharacteristic(Characteristic.On)
       .onGet(() => new Option(this.deviceStatus)
         .map(ds => ds.control.set_temperature_f >= this.HIGH_MODE_TEMP)
@@ -75,7 +167,7 @@ export class SleepmePlatformAccessory {
         }
       });
 
-    // Add temperature boost switch service only if enabled in config
+    // Initialize temperature boost switch if enabled
     if (this.hasTemperatureBoost) {
       this.tempBoostService = this.accessory.getService('Temperature Boost') ||
         this.accessory.addService(Service.Switch, 'Temperature Boost', 'temp-boost');
@@ -87,15 +179,33 @@ export class SleepmePlatformAccessory {
           this.platform.log(`Temperature boost ${value ? 'enabled' : 'disabled'} for ${this.accessory.displayName}`);
           this.publishUpdates();
         });
-    } else {
-      // Remove the temperature boost service if it exists but is no longer enabled
-      const existingBoostService = this.accessory.getService('Temperature Boost');
-      if (existingBoostService) {
-        this.accessory.removeService(existingBoostService);
-      }
     }
 
-    // Modify the existing TargetTemperature characteristic handler
+    // Initialize thermostat characteristics
+    this.thermostatService.getCharacteristic(Characteristic.CurrentHeatingCoolingState)
+      .onGet(() => new Option(this.deviceStatus)
+        .map(ds => newMapper(this.platform).toHeatingCoolingState(ds))
+        .orElse(0));
+
+    this.thermostatService.getCharacteristic(Characteristic.TargetHeatingCoolingState)
+      .onGet(() => new Option(this.deviceStatus)
+        .map(ds => newMapper(this.platform).toHeatingCoolingState(ds))
+        .orElse(0))
+      .onSet(async (value: CharacteristicValue) => {
+        const targetState = (value === 0) ? 'standby' : 'active';
+        this.platform.log(`setting TargetHeatingCoolingState for ${this.accessory.displayName} to ${targetState} (${value})`);
+        return client.setThermalControlStatus(device.id, targetState)
+          .then(r => {
+            this.platform.log(`response (${this.accessory.displayName}): ${r.status}`);
+            this.updateControlFromResponse(r);
+          });
+      });
+
+    this.thermostatService.getCharacteristic(Characteristic.CurrentTemperature)
+      .onGet(() => new Option(this.deviceStatus)
+        .map(ds => ds.status.water_temperature_c)
+        .orElse(-270));
+
     this.thermostatService.getCharacteristic(Characteristic.TargetTemperature)
       .onGet(() => new Option(this.deviceStatus)
         .map(ds => {
@@ -122,53 +232,11 @@ export class SleepmePlatformAccessory {
           });
       });
 
-    // ... (keeping rest of the constructor unchanged)
+    this.thermostatService.getCharacteristic(Characteristic.TemperatureDisplayUnits)
+      .onGet(() => new Option(this.deviceStatus)
+        .map(ds => ds.control.display_temperature_unit === 'c' ? 0 : 1)
+        .orElse(1));
   }
 
-  private publishUpdates() {
-    const s = this.deviceStatus;
-    if (!s) {
-      return;
-    }
-
-    const {Characteristic} = this.platform;
-    const mapper = newMapper(this.platform);
-    
-    const currentState = mapper.toHeatingCoolingState(s);
-    
-    // Update water level service (keeping existing code)
-    
-    // Update HIGH mode switch
-    const isHighMode = s.control.set_temperature_f >= this.HIGH_MODE_TEMP;
-    this.highModeService.updateCharacteristic(Characteristic.On, isHighMode);
-
-    // Update temperature boost switch if it exists
-    if (this.hasTemperatureBoost && this.tempBoostService) {
-      this.tempBoostService.updateCharacteristic(Characteristic.On, this.tempBoostEnabled);
-    }
-
-    // Update thermostat characteristics with boost adjustment
-    let displayTargetTemp = s.control.set_temperature_c;
-    if (isHighMode) {
-      displayTargetTemp = 38;
-    } else if (this.hasTemperatureBoost && this.tempBoostEnabled) {
-      displayTargetTemp -= (this.TEMP_BOOST_AMOUNT * 5/9);
-    }
-
-    this.thermostatService.updateCharacteristic(Characteristic.TemperatureDisplayUnits, 
-      s.control.display_temperature_unit === 'c' ? 0 : 1);
-    this.thermostatService.updateCharacteristic(Characteristic.CurrentHeatingCoolingState, currentState);
-    this.thermostatService.updateCharacteristic(Characteristic.TargetHeatingCoolingState, currentState);
-    this.thermostatService.updateCharacteristic(Characteristic.CurrentTemperature, s.status.water_temperature_c);
-    this.thermostatService.updateCharacteristic(Characteristic.TargetTemperature, displayTargetTemp);
-    
-    this.platform.log(`Updated heating/cooling state to: ${currentState} (0=OFF, 1=HEAT, 2=COOL)`);
-    if (this.hasTemperatureBoost) {
-      this.platform.log(`Temperature boost enabled: ${this.tempBoostEnabled}, High mode: ${isHighMode}`);
-    } else {
-      this.platform.log(`High mode: ${isHighMode}`);
-    }
-  }
-
-  // ... (keeping other methods unchanged)
+  // ... (keeping updateControlFromResponse, publishUpdates, and scheduleNextCheck methods unchanged)
 }
