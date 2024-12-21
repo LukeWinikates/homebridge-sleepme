@@ -8,7 +8,9 @@ This is not an official Sleepme or Apple product, and may stop working without p
 ### Features
 
 * Control multiple Sleepme devices from Apple Home - turn off your partner's device without borrowing their phone!
-* Get low water level warnings in Home app
+* Leverage Apple Home automations to automatically adjust your Sleepme devices based on other inputs like presence, ambient temperature, and more.
+* Dedicated "high" temperature mode virtual switch.
+* Get low water level warnings in Home app.
 
 ## Setup
 
@@ -26,11 +28,23 @@ This plugin uses a Sleepme API token to communicate with Sleepme's servers, send
 
 Create a developer API token following the instructions at: https://docs.developer.sleep.me/docs/
 
-If you have multiple user accounts with multiple devices, you can create an API token for each. You can also add multiple devices to a single Sleepme account, which 
+If you have multiple user accounts with multiple devices, you can create an API token for each. You can also add multiple devices to a single Sleepme account, and all devices will load in with a single API token.
 
 ### 3. Configure the Homebridge Sleepme plugin 
 
-Add the API token you just created to the Sleepme plugin configuration. Save the configuration, and follow the instructions to restart Homebridge. Within a few minutes, the plugin should discover your Sleepme devices and they should be available in Homebridge and in your Home app. 
+Add the API token you just created to the Sleepme plugin configuration. Save the configuration, and follow the instructions to restart Homebridge. Within a few minutes, the plugin should discover your Sleepme devices and they should be available in Homebridge and in your Home app.
+
+### 4. Additional Optional Configuration 
+
+There are additional configuration options that can be set to tailor the plugin to your preference:
+
+* **Low Water Level Alert Type**: _None, battery, leak, or motion_. Select the type of virtual sensor that will be generated to represent the water level of your device. By default, "battery" is used and the water level will be represented as the thermostat device's battery level. Leak sensor or motion sensor may be preferable for purposes of using Apple home automations triggered by "leak detected" or "motion detected".
+* **Virtual Temperature Boost Switch**: Adds 20 degrees to the target temperature. Homekit thermostats only support target temperatures up to 100F, while the Sleepme Dock supports up to 115. In order to utilize this temperature range of the dock, you can turn on this virtual temperature boost switch to add 20 degrees to whatever temperature you choose. For example, if you want to heat to 110F, you'd turn on the temperature boost switch AND set the thermostat to 90. It will tell the dock to warm to 110. If you turn the switch off, it'll set back to 90. This switch is not enabled by default to prevent confusion. If you understand and want to use it, enable it in the plugin config.
+* **API Polling Interval**: This value represents how many minutes the plugin will wait between each poll of the sleepme API to update the devices' status. This interval is automatically faster/shorter for a period of time after you control the thermostat, so this configuration value is for the slow/idle polling time. By default it's 15 minutes. If you want more frequent updates, lower the number. If you get errors or rate limits, increase the number.
+
+## Notes
+
+Turning on the "high" temperature mode switch also turns on the dock. Turning OFF the "high" switch doesn't turn off the dock, it just turns off "high" mode.
 
 ## Troubleshooting
 
