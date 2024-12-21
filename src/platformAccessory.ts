@@ -13,7 +13,55 @@ interface PlatformConfig {
   virtual_temperature_boost_switch?: boolean;
 }
 
-// ... (keeping Mapper interface and newMapper function unchanged)
+interface Mapper {
+  toHeatingCoolingState: (status: DeviceStatus) => 0 | 1 | 2;
+}
+
+function newMapper(platform: SleepmePlatform): Mapper {
+  const {Characteristic} = platform;
+  return {
+    toHeatingCoolingState: (status: DeviceStatus): 0 | 1 | 2 => {
+      if (status.control.thermal_control_status === 'standby') {
+        return Characteristic.CurrentHeatingCoolingState.OFF;
+      }
+      
+      const currentTemp = status.status.water_temperature_c;
+      const targetTemp = status.control.set_temperature_c;
+      
+      if (targetTemp > currentTemp) {
+        return Characteristic.CurrentHeatingCoolingState.HEAT;
+      } else {
+        return Characteristic.CurrentHeatingCoolingState.COOL;
+      }
+    },
+  };
+}
+
+class Option<T> {
+  readonly value: T | null;
+
+  constructor(value: T | null) {
+    this.value = value;
+  }
+
+  map<TNext>(mapF: (value: T) => TNext): Option<TNext> {
+    if (this.value) {
+      return new Option(mapF(this.value));
+    }
+    return new Option<TNext>(null);
+  }
+
+  orElse<T>(elseValue: T): T {
+    if (!this.value) {
+      return elseValue;
+    }
+    return this.value as unknown as T;
+  }
+}
+
+const FAST_POLLING_INTERVAL_MS = 15 * 1000;
+const SLOW_POLLING_INTERVAL_MS = 15 * 60 * 1000;
+const POLLING_RECENCY_THRESHOLD_MS = 5 * 1000;
 
 export class SleepmePlatformAccessory {
   private thermostatService: Service;
@@ -98,7 +146,7 @@ export class SleepmePlatformAccessory {
       .setCharacteristic(Characteristic.Model, 'Dock Pro')
       .setCharacteristic(Characteristic.SerialNumber, device.id);
 
-    // Initialize all characteristic handlers after services are created
+    // Initialize all characteristic handlers
     this.initializeCharacteristics(client, device);
 
     // Get initial device status
@@ -238,5 +286,89 @@ export class SleepmePlatformAccessory {
         .orElse(1));
   }
 
-  // ... (keeping updateControlFromResponse, publishUpdates, and scheduleNextCheck methods unchanged)
+  private scheduleNextCheck(poller: () => Promise<DeviceStatus>) {
+    const timeSinceLastInteractionMS = new Date().valueOf() - this.lastInteractionTime.valueOf();
+    clearTimeout(this.timeout);
+    this.timeout = setTimeout(() => {
+      this.platform.log(`polling at: ${new Date()}`);
+      this.platform.log(`last interaction at: ${this.lastInteractionTime}`);
+      poller().then(s => {
+        this.deviceStatus = s;
+        this.publishUpdates();
+        this.platform.log(`Current thermal control status: ${s.control.thermal_control_status}`);
+      }).then(() => {
+        this.scheduleNextCheck(poller);
+      });
+    }, timeSinceLastInteractionMS < POLLING_RECENCY_THRESHOLD_MS ? FAST_POLLING_INTERVAL_MS : SLOW_POLLING_INTERVAL_MS);
+  }
+
+  private updateControlFromResponse(response: { data: Control }) {
+    if (this.deviceStatus) {
+      this.deviceStatus.control = response.data;
+      this.platform.log(`Updated control status: ${response.data.thermal_control_status}`);
+    }
+    this.lastInteractionTime = new Date();
+    this.publishUpdates();
+  }
+
+  private publishUpdates() {
+    const s = this.deviceStatus;
+    if (!s) {
+      return;
+    }
+
+    const {Characteristic} = this.platform;
+    const mapper = newMapper(this.platform);
+    
+    const currentState = mapper.toHeatingCoolingState(s);
+    
+    // Update water level service based on type
+    if (this.waterLevelType === 'leak') {
+      this.waterLevelService.updateCharacteristic(
+        Characteristic.LeakDetected,
+        s.status.is_water_low ? 
+          Characteristic.LeakDetected.LEAK_DETECTED : 
+          Characteristic.LeakDetected.LEAK_NOT_DETECTED
+      );
+    } else if (this.waterLevelType === 'motion') {
+      this.waterLevelService.updateCharacteristic(
+        Characteristic.MotionDetected,
+        s.status.is_water_low
+      );
+    } else {
+      this.waterLevelService.updateCharacteristic(Characteristic.BatteryLevel, s.status.water_level);
+      this.waterLevelService.updateCharacteristic(Characteristic.StatusLowBattery, s.status.is_water_low);
+    }
+
+    // Update HIGH mode switch
+    const isHighMode = s.control.set_temperature_f >= this.HIGH_MODE_TEMP;
+    this.highModeService.updateCharacteristic(Characteristic.On, isHighMode);
+
+    // Update temperature boost switch if it exists
+    if (this.hasTemperatureBoost && this.tempBoostService) {
+      this.tempBoostService.updateCharacteristic(Characteristic.On, this.tempBoostEnabled);
+    }
+
+    // Update thermostat characteristics with boost adjustment
+    let displayTargetTemp = s.control.set_temperature_c;
+    if (isHighMode) {
+      displayTargetTemp = 38;
+    } else if (this.hasTemperatureBoost && this.tempBoostEnabled) {
+      displayTargetTemp -= (this.TEMP_BOOST_AMOUNT * 5/9);
+    }
+
+    this.thermostatService.updateCharacteristic(Characteristic.TemperatureDisplayUnits, 
+      s.control.display_temperature_unit === 'c' ? 0 : 1);
+    this.thermostatService.updateCharacteristic(Characteristic.CurrentHeatingCoolingState, currentState);
+    this.thermostatService.updateCharacteristic(Characteristic.TargetHeatingCoolingState, currentState);
+    this.thermostatService.updateCharacteristic(Characteristic.CurrentTemperature, s.status.water_temperature_c);
+    this.thermostatService.updateCharacteristic(Characteristic.TargetTemperature, displayTargetTemp);
+    
+    this.platform.log(`Updated heating/cooling state to: ${currentState} (0=OFF, 1=HEAT, 2=COOL)`);
+    if (this.hasTemperatureBoost) {
+      this.platform.log(`Temperature boost enabled: ${this.tempBoostEnabled}, High mode: ${isHighMode}`);
+    } else {
+      this.platform.log(`High mode: ${isHighMode}`);
+    }
+  }
 }
