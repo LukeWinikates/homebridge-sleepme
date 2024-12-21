@@ -12,6 +12,8 @@ This is not an official Sleepme or Apple product, and may stop working without p
 * Dedicated "high" temperature mode virtual switch.
 * Get low water level warnings in Home app.
 
+![main screen](https://i.imgur.com/B1jF4X2.png) ![virtual switches](https://i.imgur.com/XCS6fLT.png)
+
 ## Setup
 
 ### Before you start
