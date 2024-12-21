@@ -44,6 +44,8 @@ There are additional configuration options that can be set to tailor the plugin 
 
 ## Notes
 
+The virtual switches created for each dock will show up as sub-devices of the main device, and by default they will have the same name as the parent device. If you "edit" the switch(es) in Apple Home app and delete the name, it will reveal which switch it is. For example, if your dock is named "master bedroom", this plugin will create a thermostat device called "master bedroom" with a child switch called "master bedroom". But if you EDIT the child switch and delete the name "master bedroom", it will reveal "high mode". The same applies to the temperature boost switch, if enabled.
+
 Turning on the "high" temperature mode switch also turns on the dock. Turning OFF the "high" switch doesn't turn off the dock, it just turns off "high" mode.
 
 The thermostat device's mode is automatically displayed based on the difference between the current and target temperature. If the dock is active and the target temperature is higher than the current temperature, it will show heat mode. If the target temperature is lower than the current temperature, it will show cool mode. This functionality, as well as manually changing "modes" in homekit, do not actually make any difference to the backend/dock and are just for aesthetics.
