@@ -59,9 +59,9 @@ class Option<T> {
   }
 }
 
-const FAST_POLLING_INTERVAL_MS = 15 * 1000;
+const FAST_POLLING_INTERVAL_MS = 10 * 1000;
 const SLOW_POLLING_INTERVAL_MS = 15 * 60 * 1000;
-const POLLING_RECENCY_THRESHOLD_MS = 5 * 1000;
+const POLLING_RECENCY_THRESHOLD_MS = 60 * 1000;
 
 export class SleepmePlatformAccessory {
   private thermostatService: Service;
