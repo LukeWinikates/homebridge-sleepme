@@ -9,7 +9,7 @@ type SleepmeContext = {
 };
 
 interface PlatformConfig {
-  water_level_type?: 'battery' | 'leak';
+  water_level_type?: 'battery' | 'leak' | 'motion';
 }
 
 interface Mapper {
@@ -75,7 +75,7 @@ export class SleepmePlatformAccessory {
   private deviceStatus: DeviceStatus | null;
   private lastInteractionTime: Date;
   private timeout: NodeJS.Timeout | undefined;
-  private readonly waterLevelType: 'battery' | 'leak';
+  private readonly waterLevelType: 'battery' | 'leak' | 'motion';
 
   constructor(
     private readonly platform: SleepmePlatform,
@@ -115,11 +115,15 @@ export class SleepmePlatformAccessory {
     // Remove any existing water level services
     const existingBatteryService = this.accessory.getService(Service.Battery);
     const existingLeakService = this.accessory.getService(Service.LeakSensor);
+    const existingMotionService = this.accessory.getService(Service.MotionSensor);
     if (existingBatteryService) {
       this.accessory.removeService(existingBatteryService);
     }
     if (existingLeakService) {
       this.accessory.removeService(existingLeakService);
+    }
+    if (existingMotionService) {
+      this.accessory.removeService(existingMotionService);
     }
 
     // Add the appropriate service based on configuration
@@ -136,6 +140,17 @@ export class SleepmePlatformAccessory {
             Characteristic.LeakDetected.LEAK_DETECTED : 
             Characteristic.LeakDetected.LEAK_NOT_DETECTED)
           .orElse(Characteristic.LeakDetected.LEAK_NOT_DETECTED));
+    } else if (this.waterLevelType === 'motion') {
+      this.waterLevelService = this.accessory.addService(
+        Service.MotionSensor,
+        `${this.accessory.displayName} - Water Level`
+      );
+      
+      // Set up motion sensor characteristic
+      this.waterLevelService.getCharacteristic(Characteristic.MotionDetected)
+        .onGet(() => new Option(this.deviceStatus)
+          .map(ds => ds.status.is_water_low)
+          .orElse(false));
     } else {
       this.waterLevelService = this.accessory.addService(
         Service.Battery,
@@ -258,6 +273,11 @@ export class SleepmePlatformAccessory {
         s.status.is_water_low ? 
           Characteristic.LeakDetected.LEAK_DETECTED : 
           Characteristic.LeakDetected.LEAK_NOT_DETECTED
+      );
+    } else if (this.waterLevelType === 'motion') {
+      this.waterLevelService.updateCharacteristic(
+        Characteristic.MotionDetected,
+        s.status.is_water_low
       );
     } else {
       this.waterLevelService.updateCharacteristic(Characteristic.BatteryLevel, s.status.water_level);
