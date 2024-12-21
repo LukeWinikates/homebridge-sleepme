@@ -280,6 +280,16 @@ export class SleepmePlatformAccessory {
       .onSet(async (value: CharacteristicValue) => {
         const targetState = (value === 0) ? 'standby' : 'active';
         this.platform.log(`setting TargetHeatingCoolingState for ${this.accessory.displayName} to ${targetState} (${value})`);
+        
+        // If turning OFF and HIGH mode switch is ON, disable HIGH mode first
+        const highModeEnabled = await this.highModeService.getCharacteristic(Characteristic.On).handleGetRequest();
+        if (value === 0 && highModeEnabled) {
+          this.platform.log(`Disabling HIGH mode before turning off thermostat`);
+          const defaultTemp = 85;
+          await client.setTemperatureFahrenheit(device.id, defaultTemp);
+          this.highModeService.updateCharacteristic(Characteristic.On, false);
+        }
+        
         return client.setThermalControlStatus(device.id, targetState)
           .then(r => {
             this.platform.log(`response (${this.accessory.displayName}): ${r.status}`);
