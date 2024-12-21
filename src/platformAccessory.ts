@@ -34,7 +34,6 @@ function newMapper(platform: SleepmePlatform): Mapper {
   };
 }
 
-// Rest of the code remains exactly the same from here...
 class Option<T> {
   readonly value: T | null;
 
@@ -96,6 +95,8 @@ export class SleepmePlatformAccessory {
     client.getDeviceStatus(device.id)
       .then(statusResponse => {
         this.deviceStatus = statusResponse.data;
+        // Initialize the device state after getting initial status
+        this.publishUpdates();
       });
 
     this.thermostatService = this.accessory.getService(Service.Thermostat) ||
@@ -173,8 +174,10 @@ export class SleepmePlatformAccessory {
       this.platform.log(`polling at: ${new Date()}`);
       this.platform.log(`last interaction at: ${this.lastInteractionTime}`);
       poller().then(s => {
+        // Update device status before publishing updates
         this.deviceStatus = s;
         this.publishUpdates();
+        this.platform.log(`Current thermal control status: ${s.control.thermal_control_status}`);
       }).then(() => {
         this.scheduleNextCheck(poller);
       });
@@ -184,6 +187,7 @@ export class SleepmePlatformAccessory {
   private updateControlFromResponse(response: { data: Control }) {
     if (this.deviceStatus) {
       this.deviceStatus.control = response.data;
+      this.platform.log(`Updated control status: ${response.data.thermal_control_status}`);
     }
     this.lastInteractionTime = new Date();
     this.publishUpdates();
@@ -203,12 +207,19 @@ export class SleepmePlatformAccessory {
     )
     const {Characteristic} = this.platform;
     const mapper = newMapper(this.platform);
+    
+    // Get the current heating/cooling state
+    const currentState = mapper.toHeatingCoolingState(s);
+    
     this.batteryService.updateCharacteristic(Characteristic.BatteryLevel, s.status.water_level);
     this.batteryService.updateCharacteristic(Characteristic.StatusLowBattery, s.status.is_water_low);
     this.thermostatService.updateCharacteristic(Characteristic.TemperatureDisplayUnits, s.control.display_temperature_unit === 'c' ? 0 : 1);
-    this.thermostatService.updateCharacteristic(Characteristic.CurrentHeatingCoolingState, mapper.toHeatingCoolingState(s));
-    this.thermostatService.updateCharacteristic(Characteristic.TargetHeatingCoolingState, mapper.toHeatingCoolingState(s));
+    this.thermostatService.updateCharacteristic(Characteristic.CurrentHeatingCoolingState, currentState);
+    this.thermostatService.updateCharacteristic(Characteristic.TargetHeatingCoolingState, currentState);
     this.thermostatService.updateCharacteristic(Characteristic.CurrentTemperature, s.status.water_temperature_c);
     this.thermostatService.updateCharacteristic(Characteristic.TargetTemperature, s.control.set_temperature_c);
+    
+    // Log the state change
+    this.platform.log(`Updated heating/cooling state to: ${currentState} (0=OFF, 1=HEAT, 2=COOL)`);
   }
 }
