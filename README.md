@@ -12,7 +12,7 @@ This is not an official Sleepme or Apple product, and may stop working without p
 * Dedicated "high" temperature mode virtual switch.
 * Get low water level warnings in Home app.
 
-![main screen](https://i.imgur.com/B1jF4X2.png) ![virtual switches](https://i.imgur.com/XCS6fLT.png) ![automation example](https://i.imgur.com/hUdXZ1C.png)
+![main screen](https://i.imgur.com/B1jF4X2.png) ![virtual switches](https://i.imgur.com/XCS6fLT.png) ![leak sensor](https://i.imgur.com/Rkxw1OK.png) ![automation example](https://i.imgur.com/hUdXZ1C.png)
 
 ## Setup
 
@@ -46,8 +46,8 @@ There are additional configuration options that can be set to tailor the plugin 
 
 ## Automation Examples
 
-* Automatically turn your dock ON, but only if you're home.
-* Automatically turn your dock ON immediately, if you return home after the above automation's time.
+* Automatically turn your dock ON at bedtime, but only if you're home.
+* Automatically turn your dock ON immediately, if you return home after bedtime.
 * Automatically turn your dock OFF in the morning when a presence sensor detects that you've left the bedroom.
 * Adjust the temperature of your dock based on the temperature in your bedroom or outside.
 * Have Siri remind you to top off the water in your dock once per day if the water level is low.
