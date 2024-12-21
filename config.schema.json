@@ -14,7 +14,7 @@
           "type": "string"
         }
       },
-      "low_water_level_alert": {
+      "low_level_type": {
         "title": "Low Water Level Alert Type",
         "type": "string",
         "enum": ["battery", "leak", "motion"],
