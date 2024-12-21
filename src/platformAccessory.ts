@@ -11,6 +11,7 @@ type SleepmeContext = {
 interface PlatformConfig {
   water_level_type?: 'battery' | 'leak' | 'motion';
   virtual_temperature_boost_switch?: boolean;
+  slow_polling_interval_minutes?: number;
 }
 
 interface Mapper {
@@ -60,7 +61,7 @@ class Option<T> {
 }
 
 const FAST_POLLING_INTERVAL_MS = 10 * 1000;
-const SLOW_POLLING_INTERVAL_MS = 15 * 60 * 1000;
+const DEFAULT_SLOW_POLLING_INTERVAL_MINUTES = 15;
 const POLLING_RECENCY_THRESHOLD_MS = 60 * 1000;
 
 export class SleepmePlatformAccessory {
@@ -76,6 +77,7 @@ export class SleepmePlatformAccessory {
   private readonly TEMP_BOOST_AMOUNT = 20;
   private readonly HIGH_MODE_TEMP = 999;
   private readonly hasTemperatureBoost: boolean;
+  private readonly slowPollingIntervalMs: number;
 
   constructor(
     private readonly platform: SleepmePlatform,
@@ -91,6 +93,21 @@ export class SleepmePlatformAccessory {
     const config = this.platform.config as PlatformConfig;
     this.waterLevelType = config.water_level_type || 'battery';
     this.hasTemperatureBoost = config.virtual_temperature_boost_switch === true;
+    
+    // Set up polling interval from config or use default
+    const configuredMinutes = config.slow_polling_interval_minutes;
+    if (configuredMinutes !== undefined) {
+      if (configuredMinutes < 1) {
+        this.platform.log.warn('Slow polling interval must be at least 1 minute. Using 1 minute.');
+        this.slowPollingIntervalMs = 60 * 1000;
+      } else {
+        this.slowPollingIntervalMs = configuredMinutes * 60 * 1000;
+        this.platform.log.debug(`Using configured slow polling interval of ${configuredMinutes} minutes`);
+      }
+    } else {
+      this.slowPollingIntervalMs = DEFAULT_SLOW_POLLING_INTERVAL_MINUTES * 60 * 1000;
+      this.platform.log.debug(`Using default slow polling interval of ${DEFAULT_SLOW_POLLING_INTERVAL_MINUTES} minutes`);
+    }
 
     // Debug log the configuration
     this.platform.log.debug('Configuration:', JSON.stringify(config));
@@ -320,7 +337,7 @@ export class SleepmePlatformAccessory {
       }).then(() => {
         this.scheduleNextCheck(poller);
       });
-    }, timeSinceLastInteractionMS < POLLING_RECENCY_THRESHOLD_MS ? FAST_POLLING_INTERVAL_MS : SLOW_POLLING_INTERVAL_MS);
+    }, timeSinceLastInteractionMS < POLLING_RECENCY_THRESHOLD_MS ? FAST_POLLING_INTERVAL_MS : this.slowPollingIntervalMs);
   }
 
   private updateControlFromResponse(response: { data: Control }) {

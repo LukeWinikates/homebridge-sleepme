@@ -26,6 +26,13 @@
         "type": "boolean",
         "description": "Enable or disable the virtual temperature boost switch. Adds 20 degrees to the target temperature. Useful to utilize temperatures over 100F in HomeKit.",
         "default": false
+      },
+      "slow_polling_interval_minutes": {
+        "title": "API Polling Interval (Minutes)",
+        "type": "number",
+        "description": "Set the interval (in minutes) for passive polling of the Sleepme API.",
+        "default": 15,
+        "minimum": 1
       }
     }
   }
