@@ -8,6 +8,12 @@ type SleepmeContext = {
   apiKey: string;
 };
 
+interface PlatformConfig {
+  water_level_type?: 'battery' | 'leak' | 'motion';
+  virtual_temperature_boost_switch?: boolean;
+  slow_polling_interval_minutes?: number;
+}
+
 interface Mapper {
   toHeatingCoolingState: (status: DeviceStatus) => 0 | 1 | 2;
 }
@@ -16,12 +22,10 @@ function newMapper(platform: SleepmePlatform): Mapper {
   const {Characteristic} = platform;
   return {
     toHeatingCoolingState: (status: DeviceStatus): 0 | 1 | 2 => {
-      // If the device is off, return OFF state
       if (status.control.thermal_control_status === 'standby') {
         return Characteristic.CurrentHeatingCoolingState.OFF;
       }
       
-      // Compare current and target temperatures to determine heating or cooling
       const currentTemp = status.status.water_temperature_c;
       const targetTemp = status.control.set_temperature_c;
       
@@ -34,7 +38,6 @@ function newMapper(platform: SleepmePlatform): Mapper {
   };
 }
 
-// Rest of the code remains exactly the same from here...
 class Option<T> {
   readonly value: T | null;
 
@@ -58,20 +61,23 @@ class Option<T> {
 }
 
 const FAST_POLLING_INTERVAL_MS = 15 * 1000;
-const SLOW_POLLING_INTERVAL_MS = 15 * 60 * 1000;
-const POLLING_RECENCY_THRESHOLD_MS = 5 * 1000;
+const DEFAULT_SLOW_POLLING_INTERVAL_MINUTES = 15;
+const POLLING_RECENCY_THRESHOLD_MS = 60 * 1000;
 
-/**
- * Platform Accessory
- * An instance of this class is created for each accessory your platform registers
- * Each accessory may expose multiple services of different thermostatService types.
- */
 export class SleepmePlatformAccessory {
   private thermostatService: Service;
-  private batteryService: Service;
+  private waterLevelService: Service;
+  private highModeService: Service;
+  private tempBoostService?: Service;
   private deviceStatus: DeviceStatus | null;
   private lastInteractionTime: Date;
   private timeout: NodeJS.Timeout | undefined;
+  private readonly waterLevelType: 'battery' | 'leak' | 'motion';
+  private tempBoostEnabled: boolean = false;
+  private readonly TEMP_BOOST_AMOUNT = 20;
+  private readonly HIGH_MODE_TEMP = 999;
+  private readonly hasTemperatureBoost: boolean;
+  private readonly slowPollingIntervalMs: number;
 
   constructor(
     private readonly platform: SleepmePlatform,
@@ -82,63 +88,242 @@ export class SleepmePlatformAccessory {
     const {apiKey, device} = this.accessory.context as SleepmeContext;
     const client = new Client(apiKey);
     this.deviceStatus = null;
-    const mapper = newMapper(platform);
-    this.scheduleNextCheck = this.scheduleNextCheck.bind(this);
-    this.updateControlFromResponse = this.updateControlFromResponse.bind(this);
-    this.publishUpdates = this.publishUpdates.bind(this);
 
-    // set accessory information
-    this.accessory.getService(Service.AccessoryInformation)!
+    // Get configuration
+    const config = this.platform.config as PlatformConfig;
+    this.waterLevelType = config.water_level_type || 'battery';
+    this.hasTemperatureBoost = config.virtual_temperature_boost_switch === true;
+    
+    // Set up polling interval from config or use default
+    const configuredMinutes = config.slow_polling_interval_minutes;
+    if (configuredMinutes !== undefined) {
+      if (configuredMinutes < 1) {
+        this.platform.log.warn('Slow polling interval must be at least 1 minute. Using 1 minute.');
+        this.slowPollingIntervalMs = 60 * 1000;
+      } else {
+        this.slowPollingIntervalMs = configuredMinutes * 60 * 1000;
+        this.platform.log.debug(`Using configured slow polling interval of ${configuredMinutes} minutes`);
+      }
+    } else {
+      this.slowPollingIntervalMs = DEFAULT_SLOW_POLLING_INTERVAL_MINUTES * 60 * 1000;
+      this.platform.log.debug(`Using default slow polling interval of ${DEFAULT_SLOW_POLLING_INTERVAL_MINUTES} minutes`);
+    }
+
+    // Debug log the configuration
+    this.platform.log.debug('Configuration:', JSON.stringify(config));
+    this.platform.log.debug(`Water level type configured as: ${this.waterLevelType}`);
+    
+    if (this.hasTemperatureBoost) {
+      this.platform.log.debug('Temperature boost switch enabled in config');
+    }
+
+    // Initialize service bindings first
+    this.thermostatService = this.accessory.getService(this.platform.Service.Thermostat) ||
+      this.accessory.addService(this.platform.Service.Thermostat, `${this.accessory.displayName} - Dock Pro`);
+
+    this.highModeService = this.accessory.getService('High Mode') ||
+      this.accessory.addService(this.platform.Service.Switch, 'High Mode', 'high-mode');
+
+    // Remove any existing water level services first
+    const existingBatteryService = this.accessory.getService(this.platform.Service.Battery);
+    const existingLeakService = this.accessory.getService(this.platform.Service.LeakSensor);
+    const existingMotionService = this.accessory.getService(this.platform.Service.MotionSensor);
+    const existingBoostService = this.accessory.getService('Temperature Boost');
+    
+    // Debug existing services
+    this.platform.log.debug(`Existing services before removal:
+      Battery: ${!!existingBatteryService}
+      Leak: ${!!existingLeakService}
+      Motion: ${!!existingMotionService}`);
+    
+    if (existingBatteryService) {
+      this.platform.log.debug('Removing existing battery service');
+      this.accessory.removeService(existingBatteryService);
+    }
+    if (existingLeakService) {
+      this.platform.log.debug('Removing existing leak service');
+      this.accessory.removeService(existingLeakService);
+    }
+    if (existingMotionService) {
+      this.platform.log.debug('Removing existing motion service');
+      this.accessory.removeService(existingMotionService);
+    }
+    if (existingBoostService && !this.hasTemperatureBoost) {
+      this.platform.log.debug('Removing existing temperature boost service');
+      this.accessory.removeService(existingBoostService);
+    }
+
+    // Add the appropriate water level service based on configuration
+    this.platform.log.debug(`Creating new water level service of type: ${this.waterLevelType}`);
+    if (this.waterLevelType === 'leak') {
+      this.waterLevelService = this.accessory.addService(
+        this.platform.Service.LeakSensor,
+        `${this.accessory.displayName} - Water Level`
+      );
+    } else if (this.waterLevelType === 'motion') {
+      this.waterLevelService = this.accessory.addService(
+        this.platform.Service.MotionSensor,
+        `${this.accessory.displayName} - Water Level`
+      );
+    } else {
+      this.waterLevelService = this.accessory.addService(
+        this.platform.Service.Battery,
+        `${this.accessory.displayName} - Water Level`
+      );
+    }
+
+    // Set accessory information
+    this.accessory.getService(this.platform.Service.AccessoryInformation)!
       .setCharacteristic(Characteristic.Manufacturer, 'Sleepme')
       .setCharacteristic(Characteristic.Model, 'Dock Pro')
       .setCharacteristic(Characteristic.SerialNumber, device.id);
 
+    // Initialize all characteristic handlers after services are created
+    this.initializeCharacteristics(client, device);
+
+    // Get initial device status
     client.getDeviceStatus(device.id)
       .then(statusResponse => {
         this.deviceStatus = statusResponse.data;
+        this.publishUpdates();
       });
 
-    this.thermostatService = this.accessory.getService(Service.Thermostat) ||
-      this.accessory.addService(Service.Thermostat, `${this.accessory.displayName} - Dock Pro`);
-    this.batteryService = this.accessory.getService(Service.Battery) ||
-      this.accessory.addService(Service.Battery, `${this.accessory.displayName} - Dock Pro Water Level`);
+    // Set up polling
+    this.scheduleNextCheck(async () => {
+      this.platform.log(`polling device status for ${this.accessory.displayName}`)
+      const r = await client.getDeviceStatus(device.id);
+      this.platform.log(`response (${this.accessory.displayName}): ${r.status}`)
+      return r.data
+    });
+  }
 
-    // create handlers for required characteristics
+  private initializeCharacteristics(client: Client, device: Device) {
+    const {Characteristic} = this.platform;
+
+    // Initialize water level characteristics based on type
+    if (this.waterLevelType === 'leak') {
+      this.waterLevelService.getCharacteristic(Characteristic.LeakDetected)
+        .onGet(() => new Option(this.deviceStatus)
+          .map(ds => ds.status.is_water_low ? 
+            Characteristic.LeakDetected.LEAK_DETECTED : 
+            Characteristic.LeakDetected.LEAK_NOT_DETECTED)
+          .orElse(Characteristic.LeakDetected.LEAK_NOT_DETECTED));
+    } else if (this.waterLevelType === 'motion') {
+      this.waterLevelService.getCharacteristic(Characteristic.MotionDetected)
+        .onGet(() => new Option(this.deviceStatus)
+          .map(ds => ds.status.is_water_low)
+          .orElse(false));
+    } else {
+      this.waterLevelService.getCharacteristic(Characteristic.StatusLowBattery)
+        .onGet(() => new Option(this.deviceStatus)
+          .map(ds => ds.status.is_water_low)
+          .orElse(false));
+
+      this.waterLevelService.getCharacteristic(Characteristic.BatteryLevel)
+        .onGet(() => new Option(this.deviceStatus)
+          .map(ds => ds.status.water_level)
+          .orElse(50));
+    }
+
+    // Initialize HIGH mode switch characteristics
+    this.highModeService.getCharacteristic(Characteristic.On)
+      .onGet(() => new Option(this.deviceStatus)
+        .map(ds => ds.control.set_temperature_f >= this.HIGH_MODE_TEMP)
+        .orElse(false))
+      .onSet(async (value: CharacteristicValue) => {
+        if (value) {
+          // First check if we need to turn the device on
+          if (this.deviceStatus?.control.thermal_control_status === 'standby') {
+            this.platform.log(`Device is in standby, activating before enabling HIGH mode`);
+            await client.setThermalControlStatus(device.id, 'active');
+          }
+          
+          return client.setTemperatureFahrenheit(device.id, this.HIGH_MODE_TEMP)
+            .then(r => {
+              this.platform.log(`HIGH mode enabled for ${this.accessory.displayName}`);
+              this.updateControlFromResponse(r);
+            });
+        } else {
+          const defaultTemp = 85;
+          return client.setTemperatureFahrenheit(device.id, defaultTemp)
+            .then(r => {
+              this.platform.log(`HIGH mode disabled for ${this.accessory.displayName}`);
+              this.updateControlFromResponse(r);
+            });
+        }
+      });
+
+    // Initialize temperature boost switch if enabled
+    if (this.hasTemperatureBoost) {
+      this.tempBoostService = this.accessory.getService('Temperature Boost') ||
+        this.accessory.addService(this.platform.Service.Switch, 'Temperature Boost', 'temp-boost');
+
+      this.tempBoostService.getCharacteristic(Characteristic.On)
+        .onGet(() => this.tempBoostEnabled)
+        .onSet((value: CharacteristicValue) => {
+          this.tempBoostEnabled = value as boolean;
+          this.platform.log(`Temperature boost ${value ? 'enabled' : 'disabled'} for ${this.accessory.displayName}`);
+          this.publishUpdates();
+        });
+    }
+
+    // Initialize thermostat characteristics
     this.thermostatService.getCharacteristic(Characteristic.CurrentHeatingCoolingState)
       .onGet(() => new Option(this.deviceStatus)
-        .map(ds => mapper.toHeatingCoolingState(ds))
+        .map(ds => newMapper(this.platform).toHeatingCoolingState(ds))
         .orElse(0));
 
     this.thermostatService.getCharacteristic(Characteristic.TargetHeatingCoolingState)
       .onGet(() => new Option(this.deviceStatus)
-        .map(ds => mapper.toHeatingCoolingState(ds))
+        .map(ds => newMapper(this.platform).toHeatingCoolingState(ds))
         .orElse(0))
       .onSet(async (value: CharacteristicValue) => {
         const targetState = (value === 0) ? 'standby' : 'active';
-        this.platform.log(`setting TargetHeatingCoolingState for ${this.accessory.displayName} to ${targetState} (${value})`)
+        this.platform.log(`setting TargetHeatingCoolingState for ${this.accessory.displayName} to ${targetState} (${value})`);
+        
+        // If turning OFF and HIGH mode switch is ON, disable HIGH mode first
+        const highModeEnabled = await this.highModeService.getCharacteristic(Characteristic.On).handleGetRequest();
+        if (value === 0 && highModeEnabled) {
+          this.platform.log(`Disabling HIGH mode before turning off thermostat`);
+          const defaultTemp = 85;
+          await client.setTemperatureFahrenheit(device.id, defaultTemp);
+          this.highModeService.updateCharacteristic(Characteristic.On, false);
+        }
+        
         return client.setThermalControlStatus(device.id, targetState)
           .then(r => {
-            this.platform.log(`response (${this.accessory.displayName}): ${r.status}`)
+            this.platform.log(`response (${this.accessory.displayName}): ${r.status}`);
             this.updateControlFromResponse(r);
           });
       });
 
     this.thermostatService.getCharacteristic(Characteristic.CurrentTemperature)
-      .onGet(() =>
-        new Option(this.deviceStatus)
-          .map(ds => ds.status.water_temperature_c)
-          .orElse(-270));
+      .onGet(() => new Option(this.deviceStatus)
+        .map(ds => ds.status.water_temperature_c)
+        .orElse(-270));
 
     this.thermostatService.getCharacteristic(Characteristic.TargetTemperature)
       .onGet(() => new Option(this.deviceStatus)
-        .map(ds => ds.control.set_temperature_c)
+        .map(ds => {
+          const tempC = ds.control.set_temperature_c;
+          if (ds.control.set_temperature_f >= this.HIGH_MODE_TEMP) {
+            return 38;
+          }
+          return this.hasTemperatureBoost && this.tempBoostEnabled ? 
+            tempC - (this.TEMP_BOOST_AMOUNT * 5/9) : tempC;
+        })
         .orElse(10))
       .onSet(async (value: CharacteristicValue) => {
-        const tempF = Math.floor((value as number * (9 / 5)) + 32);
-        this.platform.log(`setting TargetTemperature for ${this.accessory.displayName} to ${tempF} (${value})`)
+        const adjustedValue = this.hasTemperatureBoost && this.tempBoostEnabled ? 
+          (value as number) + (this.TEMP_BOOST_AMOUNT * 5/9) : 
+          value as number;
+        
+        const tempF = Math.floor((adjustedValue * (9 / 5)) + 32);
+        this.platform.log(`setting TargetTemperature for ${this.accessory.displayName} to ${tempF}F (${adjustedValue}C)`);
+        
         return client.setTemperatureFahrenheit(device.id, tempF)
           .then(r => {
-            this.platform.log(`response (${this.accessory.displayName}): ${r.status}`)
+            this.platform.log(`response (${this.accessory.displayName}): ${r.status}`);
             this.updateControlFromResponse(r);
           });
       });
@@ -147,23 +332,6 @@ export class SleepmePlatformAccessory {
       .onGet(() => new Option(this.deviceStatus)
         .map(ds => ds.control.display_temperature_unit === 'c' ? 0 : 1)
         .orElse(1));
-
-    this.batteryService.getCharacteristic(Characteristic.StatusLowBattery)
-      .onGet(() => new Option(this.deviceStatus)
-        .map(ds => ds.status.is_water_low)
-        .orElse(false));
-
-    this.batteryService.getCharacteristic(Characteristic.BatteryLevel)
-      .onGet(() => new Option(this.deviceStatus)
-        .map(ds => ds.status.water_level)
-        .orElse(50));
-
-    this.scheduleNextCheck(async () => {
-      this.platform.log(`polling device status for ${this.accessory.displayName}`)
-      const r = await client.getDeviceStatus(device.id);
-      this.platform.log(`response (${this.accessory.displayName}): ${r.status}`)
-      return r.data
-    });
   }
 
   private scheduleNextCheck(poller: () => Promise<DeviceStatus>) {
@@ -175,15 +343,17 @@ export class SleepmePlatformAccessory {
       poller().then(s => {
         this.deviceStatus = s;
         this.publishUpdates();
+        this.platform.log(`Current thermal control status: ${s.control.thermal_control_status}`);
       }).then(() => {
         this.scheduleNextCheck(poller);
       });
-    }, timeSinceLastInteractionMS < POLLING_RECENCY_THRESHOLD_MS ? FAST_POLLING_INTERVAL_MS : SLOW_POLLING_INTERVAL_MS);
+    }, timeSinceLastInteractionMS < POLLING_RECENCY_THRESHOLD_MS ? FAST_POLLING_INTERVAL_MS : this.slowPollingIntervalMs);
   }
 
   private updateControlFromResponse(response: { data: Control }) {
     if (this.deviceStatus) {
       this.deviceStatus.control = response.data;
+      this.platform.log(`Updated control status: ${response.data.thermal_control_status}`);
     }
     this.lastInteractionTime = new Date();
     this.publishUpdates();
@@ -194,21 +364,59 @@ export class SleepmePlatformAccessory {
     if (!s) {
       return;
     }
-    this.platform.log(
-      `[device] ${this.accessory.displayName}
-      [connected?] ${s.status.is_connected}
-      [status] ${s.control.thermal_control_status}
-      [temperature] ${s.status.water_temperature_f}f/${s.status.water_temperature_c}c
-      [target] ${s.control.set_temperature_f}f/${s.control.set_temperature_c}c`,
-    )
+
     const {Characteristic} = this.platform;
     const mapper = newMapper(this.platform);
-    this.batteryService.updateCharacteristic(Characteristic.BatteryLevel, s.status.water_level);
-    this.batteryService.updateCharacteristic(Characteristic.StatusLowBattery, s.status.is_water_low);
-    this.thermostatService.updateCharacteristic(Characteristic.TemperatureDisplayUnits, s.control.display_temperature_unit === 'c' ? 0 : 1);
-    this.thermostatService.updateCharacteristic(Characteristic.CurrentHeatingCoolingState, mapper.toHeatingCoolingState(s));
-    this.thermostatService.updateCharacteristic(Characteristic.TargetHeatingCoolingState, mapper.toHeatingCoolingState(s));
+    
+    const currentState = mapper.toHeatingCoolingState(s);
+    
+    // Update water level service based on type
+    if (this.waterLevelType === 'leak') {
+      this.waterLevelService.updateCharacteristic(
+        Characteristic.LeakDetected,
+        s.status.is_water_low ? 
+          Characteristic.LeakDetected.LEAK_DETECTED : 
+          Characteristic.LeakDetected.LEAK_NOT_DETECTED
+      );
+    } else if (this.waterLevelType === 'motion') {
+      this.waterLevelService.updateCharacteristic(
+        Characteristic.MotionDetected,
+        s.status.is_water_low
+      );
+    } else {
+      this.waterLevelService.updateCharacteristic(Characteristic.BatteryLevel, s.status.water_level);
+      this.waterLevelService.updateCharacteristic(Characteristic.StatusLowBattery, s.status.is_water_low);
+    }
+
+    // Update HIGH mode switch
+    const isHighMode = s.control.set_temperature_f >= this.HIGH_MODE_TEMP;
+    this.highModeService.updateCharacteristic(Characteristic.On, isHighMode);
+
+    // Update temperature boost switch if it exists
+    if (this.hasTemperatureBoost && this.tempBoostService) {
+      this.tempBoostService.updateCharacteristic(Characteristic.On, this.tempBoostEnabled);
+    }
+
+    // Update thermostat characteristics with boost adjustment
+    let displayTargetTemp = s.control.set_temperature_c;
+    if (isHighMode) {
+      displayTargetTemp = 38;
+    } else if (this.hasTemperatureBoost && this.tempBoostEnabled) {
+      displayTargetTemp -= (this.TEMP_BOOST_AMOUNT * 5/9);
+    }
+
+    this.thermostatService.updateCharacteristic(Characteristic.TemperatureDisplayUnits, 
+      s.control.display_temperature_unit === 'c' ? 0 : 1);
+    this.thermostatService.updateCharacteristic(Characteristic.CurrentHeatingCoolingState, currentState);
+    this.thermostatService.updateCharacteristic(Characteristic.TargetHeatingCoolingState, currentState);
     this.thermostatService.updateCharacteristic(Characteristic.CurrentTemperature, s.status.water_temperature_c);
-    this.thermostatService.updateCharacteristic(Characteristic.TargetTemperature, s.control.set_temperature_c);
+    this.thermostatService.updateCharacteristic(Characteristic.TargetTemperature, displayTargetTemp);
+    
+    this.platform.log(`Updated heating/cooling state to: ${currentState} (0=OFF, 1=HEAT, 2=COOL)`);
+    if (this.hasTemperatureBoost) {
+      this.platform.log(`Temperature boost enabled: ${this.tempBoostEnabled}, High mode: ${isHighMode}`);
+    } else {
+      this.platform.log(`High mode: ${isHighMode}`);
+    }
   }
 }
