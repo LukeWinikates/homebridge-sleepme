@@ -15,21 +15,26 @@ interface PlatformConfig {
 }
 
 interface Mapper {
-  toHeatingCoolingState: (status: DeviceStatus) => 0 | 1 | 2;
+  toHeatingCoolingState: (status: DeviceStatus) => 0 | 1 | 2 | 3;
 }
 
 function newMapper(platform: SleepmePlatform): Mapper {
   const {Characteristic} = platform;
   return {
-    toHeatingCoolingState: (status: DeviceStatus): 0 | 1 | 2 => {
+    toHeatingCoolingState: (status: DeviceStatus): 0 | 1 | 2 | 3 => {
+      // If the device is off, return OFF state
       if (status.control.thermal_control_status === 'standby') {
         return Characteristic.CurrentHeatingCoolingState.OFF;
       }
       
+      // Compare current and target temperatures
       const currentTemp = status.status.water_temperature_c;
       const targetTemp = status.control.set_temperature_c;
       
-      if (targetTemp > currentTemp) {
+      // If temperatures match, return AUTO
+      if (Math.abs(targetTemp - currentTemp) < 0.5) { // Using 0.5°C tolerance
+        return Characteristic.CurrentHeatingCoolingState.AUTO;
+      } else if (targetTemp > currentTemp) {
         return Characteristic.CurrentHeatingCoolingState.HEAT;
       } else {
         return Characteristic.CurrentHeatingCoolingState.COOL;
