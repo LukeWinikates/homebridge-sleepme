@@ -8,6 +8,10 @@ type SleepmeContext = {
   apiKey: string;
 };
 
+interface PlatformConfig {
+  water_level_type?: 'battery' | 'leak';
+}
+
 interface Mapper {
   toHeatingCoolingState: (status: DeviceStatus) => 0 | 1 | 2;
 }
@@ -67,10 +71,11 @@ const POLLING_RECENCY_THRESHOLD_MS = 5 * 1000;
  */
 export class SleepmePlatformAccessory {
   private thermostatService: Service;
-  private leakSensorService: Service;
+  private waterLevelService: Service;
   private deviceStatus: DeviceStatus | null;
   private lastInteractionTime: Date;
   private timeout: NodeJS.Timeout | undefined;
+  private readonly waterLevelType: 'battery' | 'leak';
 
   constructor(
     private readonly platform: SleepmePlatform,
@@ -81,6 +86,12 @@ export class SleepmePlatformAccessory {
     const {apiKey, device} = this.accessory.context as SleepmeContext;
     const client = new Client(apiKey);
     this.deviceStatus = null;
+
+    // Get configuration or use default
+    const config = this.platform.config as PlatformConfig;
+    this.waterLevelType = config.water_level_type || 'battery';
+    this.platform.log.debug(`Water level monitoring type: ${this.waterLevelType}`);
+
     const mapper = newMapper(platform);
     this.scheduleNextCheck = this.scheduleNextCheck.bind(this);
     this.updateControlFromResponse = this.updateControlFromResponse.bind(this);
@@ -101,14 +112,46 @@ export class SleepmePlatformAccessory {
     this.thermostatService = this.accessory.getService(Service.Thermostat) ||
       this.accessory.addService(Service.Thermostat, `${this.accessory.displayName} - Dock Pro`);
 
-    // Replace battery service with leak sensor service
-    this.leakSensorService = this.accessory.getService(Service.LeakSensor) ||
-      this.accessory.addService(Service.LeakSensor, `${this.accessory.displayName} - Water Level`);
+    // Remove any existing water level services
+    const existingBatteryService = this.accessory.getService(Service.Battery);
+    const existingLeakService = this.accessory.getService(Service.LeakSensor);
+    if (existingBatteryService) {
+      this.accessory.removeService(existingBatteryService);
+    }
+    if (existingLeakService) {
+      this.accessory.removeService(existingLeakService);
+    }
 
-    // Remove the battery service if it exists from previous version
-    const batteryService = this.accessory.getService(Service.Battery);
-    if (batteryService) {
-      this.accessory.removeService(batteryService);
+    // Add the appropriate service based on configuration
+    if (this.waterLevelType === 'leak') {
+      this.waterLevelService = this.accessory.addService(
+        Service.LeakSensor,
+        `${this.accessory.displayName} - Water Level`
+      );
+      
+      // Set up leak sensor characteristic
+      this.waterLevelService.getCharacteristic(Characteristic.LeakDetected)
+        .onGet(() => new Option(this.deviceStatus)
+          .map(ds => ds.status.is_water_low ? 
+            Characteristic.LeakDetected.LEAK_DETECTED : 
+            Characteristic.LeakDetected.LEAK_NOT_DETECTED)
+          .orElse(Characteristic.LeakDetected.LEAK_NOT_DETECTED));
+    } else {
+      this.waterLevelService = this.accessory.addService(
+        Service.Battery,
+        `${this.accessory.displayName} - Water Level`
+      );
+      
+      // Set up battery characteristics
+      this.waterLevelService.getCharacteristic(Characteristic.StatusLowBattery)
+        .onGet(() => new Option(this.deviceStatus)
+          .map(ds => ds.status.is_water_low)
+          .orElse(false));
+
+      this.waterLevelService.getCharacteristic(Characteristic.BatteryLevel)
+        .onGet(() => new Option(this.deviceStatus)
+          .map(ds => ds.status.water_level)
+          .orElse(50));
     }
 
     // create handlers for required characteristics
@@ -155,14 +198,6 @@ export class SleepmePlatformAccessory {
       .onGet(() => new Option(this.deviceStatus)
         .map(ds => ds.control.display_temperature_unit === 'c' ? 0 : 1)
         .orElse(1));
-
-    // Set up leak sensor characteristic
-    this.leakSensorService.getCharacteristic(Characteristic.LeakDetected)
-      .onGet(() => new Option(this.deviceStatus)
-        .map(ds => ds.status.is_water_low ? 
-          Characteristic.LeakDetected.LEAK_DETECTED : 
-          Characteristic.LeakDetected.LEAK_NOT_DETECTED)
-        .orElse(Characteristic.LeakDetected.LEAK_NOT_DETECTED));
 
     this.scheduleNextCheck(async () => {
       this.platform.log(`polling device status for ${this.accessory.displayName}`)
@@ -216,13 +251,18 @@ export class SleepmePlatformAccessory {
     
     const currentState = mapper.toHeatingCoolingState(s);
     
-    // Update leak sensor
-    this.leakSensorService.updateCharacteristic(
-      Characteristic.LeakDetected,
-      s.status.is_water_low ? 
-        Characteristic.LeakDetected.LEAK_DETECTED : 
-        Characteristic.LeakDetected.LEAK_NOT_DETECTED
-    );
+    // Update water level service based on type
+    if (this.waterLevelType === 'leak') {
+      this.waterLevelService.updateCharacteristic(
+        Characteristic.LeakDetected,
+        s.status.is_water_low ? 
+          Characteristic.LeakDetected.LEAK_DETECTED : 
+          Characteristic.LeakDetected.LEAK_NOT_DETECTED
+      );
+    } else {
+      this.waterLevelService.updateCharacteristic(Characteristic.BatteryLevel, s.status.water_level);
+      this.waterLevelService.updateCharacteristic(Characteristic.StatusLowBattery, s.status.is_water_low);
+    }
 
     this.thermostatService.updateCharacteristic(Characteristic.TemperatureDisplayUnits, s.control.display_temperature_unit === 'c' ? 0 : 1);
     this.thermostatService.updateCharacteristic(Characteristic.CurrentHeatingCoolingState, currentState);
@@ -231,6 +271,6 @@ export class SleepmePlatformAccessory {
     this.thermostatService.updateCharacteristic(Characteristic.TargetTemperature, s.control.set_temperature_c);
     
     this.platform.log(`Updated heating/cooling state to: ${currentState} (0=OFF, 1=HEAT, 2=COOL)`);
-    this.platform.log(`Water level low: ${s.status.is_water_low}`);
+    this.platform.log(`Water level monitoring type: ${this.waterLevelType}, Water low: ${s.status.is_water_low}`);
   }
 }
