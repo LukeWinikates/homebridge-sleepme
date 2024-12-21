@@ -97,16 +97,16 @@ export class SleepmePlatformAccessory {
     }
 
     // Initialize service bindings first
-    this.thermostatService = this.accessory.getService(Service.Thermostat) ||
-      this.accessory.addService(Service.Thermostat, `${this.accessory.displayName} - Dock Pro`);
+    this.thermostatService = this.accessory.getService(this.platform.Service.Thermostat) ||
+      this.accessory.addService(this.platform.Service.Thermostat, `${this.accessory.displayName} - Dock Pro`);
 
     this.highModeService = this.accessory.getService('High Mode') ||
-      this.accessory.addService(Service.Switch, 'High Mode', 'high-mode');
+      this.accessory.addService(this.platform.Service.Switch, 'High Mode', 'high-mode');
 
     // Remove any existing water level services first
-    const existingBatteryService = this.accessory.getService(Service.Battery);
-    const existingLeakService = this.accessory.getService(Service.LeakSensor);
-    const existingMotionService = this.accessory.getService(Service.MotionSensor);
+    const existingBatteryService = this.accessory.getService(this.platform.Service.Battery);
+    const existingLeakService = this.accessory.getService(this.platform.Service.LeakSensor);
+    const existingMotionService = this.accessory.getService(this.platform.Service.MotionSensor);
     const existingBoostService = this.accessory.getService('Temperature Boost');
     
     if (existingBatteryService) {
@@ -125,28 +125,28 @@ export class SleepmePlatformAccessory {
     // Add the appropriate water level service based on configuration
     if (this.waterLevelType === 'leak') {
       this.waterLevelService = this.accessory.addService(
-        Service.LeakSensor,
+        this.platform.Service.LeakSensor,
         `${this.accessory.displayName} - Water Level`
       );
     } else if (this.waterLevelType === 'motion') {
       this.waterLevelService = this.accessory.addService(
-        Service.MotionSensor,
+        this.platform.Service.MotionSensor,
         `${this.accessory.displayName} - Water Level`
       );
     } else {
       this.waterLevelService = this.accessory.addService(
-        Service.Battery,
+        this.platform.Service.Battery,
         `${this.accessory.displayName} - Water Level`
       );
     }
 
     // Set accessory information
-    this.accessory.getService(Service.AccessoryInformation)!
+    this.accessory.getService(this.platform.Service.AccessoryInformation)!
       .setCharacteristic(Characteristic.Manufacturer, 'Sleepme')
       .setCharacteristic(Characteristic.Model, 'Dock Pro')
       .setCharacteristic(Characteristic.SerialNumber, device.id);
 
-    // Initialize all characteristic handlers
+    // Initialize all characteristic handlers after services are created
     this.initializeCharacteristics(client, device);
 
     // Get initial device status
@@ -218,7 +218,7 @@ export class SleepmePlatformAccessory {
     // Initialize temperature boost switch if enabled
     if (this.hasTemperatureBoost) {
       this.tempBoostService = this.accessory.getService('Temperature Boost') ||
-        this.accessory.addService(Service.Switch, 'Temperature Boost', 'temp-boost');
+        this.accessory.addService(this.platform.Service.Switch, 'Temperature Boost', 'temp-boost');
 
       this.tempBoostService.getCharacteristic(Characteristic.On)
         .onGet(() => this.tempBoostEnabled)
