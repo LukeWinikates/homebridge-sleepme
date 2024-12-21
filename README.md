@@ -46,6 +46,8 @@ There are additional configuration options that can be set to tailor the plugin 
 
 Turning on the "high" temperature mode switch also turns on the dock. Turning OFF the "high" switch doesn't turn off the dock, it just turns off "high" mode.
 
+The thermostat device's mode is automatically displayed based on the difference between the current and target temperature. If the dock is active and the target temperature is higher than the current temperature, it will show heat mode. If the target temperature is lower than the current temperature, it will show cool mode. This functionality, as well as manually changing "modes" in homekit, do not actually make any difference to the backend/dock and are just for aesthetics.
+
 ## Troubleshooting
 
 This plugin is known to work with the Dock Pro, and has not been tested with other Sleepme devices.
