@@ -18,7 +18,14 @@
         "title": "Low Water Level Alert Type",
         "type": "string",
         "enum": ["battery", "leak", "motion"],
-        "description": "Select the alert type for low water level."
+        "description": "Select the alert type for low water level.",
+        "default": "battery"
+      },
+      "virtual_temperature_boost_switch": {
+        "title": "Virtual Temperature Boost Switch",
+        "type": "boolean",
+        "description": "Enable or disable the virtual temperature boost switch. Adds 20 degrees to the target temperature. Useful to utilize temperatures over 100F in HomeKit.",
+        "default": false
       }
     }
   }
