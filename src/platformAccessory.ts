@@ -92,6 +92,10 @@ export class SleepmePlatformAccessory {
     this.waterLevelType = config.water_level_type || 'battery';
     this.hasTemperatureBoost = config.virtual_temperature_boost_switch === true;
 
+    // Debug log the configuration
+    this.platform.log.debug('Configuration:', JSON.stringify(config));
+    this.platform.log.debug(`Water level type configured as: ${this.waterLevelType}`);
+    
     if (this.hasTemperatureBoost) {
       this.platform.log.debug('Temperature boost switch enabled in config');
     }
@@ -109,20 +113,31 @@ export class SleepmePlatformAccessory {
     const existingMotionService = this.accessory.getService(this.platform.Service.MotionSensor);
     const existingBoostService = this.accessory.getService('Temperature Boost');
     
+    // Debug existing services
+    this.platform.log.debug(`Existing services before removal:
+      Battery: ${!!existingBatteryService}
+      Leak: ${!!existingLeakService}
+      Motion: ${!!existingMotionService}`);
+    
     if (existingBatteryService) {
+      this.platform.log.debug('Removing existing battery service');
       this.accessory.removeService(existingBatteryService);
     }
     if (existingLeakService) {
+      this.platform.log.debug('Removing existing leak service');
       this.accessory.removeService(existingLeakService);
     }
     if (existingMotionService) {
+      this.platform.log.debug('Removing existing motion service');
       this.accessory.removeService(existingMotionService);
     }
     if (existingBoostService && !this.hasTemperatureBoost) {
+      this.platform.log.debug('Removing existing temperature boost service');
       this.accessory.removeService(existingBoostService);
     }
 
     // Add the appropriate water level service based on configuration
+    this.platform.log.debug(`Creating new water level service of type: ${this.waterLevelType}`);
     if (this.waterLevelType === 'leak') {
       this.waterLevelService = this.accessory.addService(
         this.platform.Service.LeakSensor,
@@ -200,6 +215,12 @@ export class SleepmePlatformAccessory {
         .orElse(false))
       .onSet(async (value: CharacteristicValue) => {
         if (value) {
+          // First check if we need to turn the device on
+          if (this.deviceStatus?.control.thermal_control_status === 'standby') {
+            this.platform.log(`Device is in standby, activating before enabling HIGH mode`);
+            await client.setThermalControlStatus(device.id, 'active');
+          }
+          
           return client.setTemperatureFahrenheit(device.id, this.HIGH_MODE_TEMP)
             .then(r => {
               this.platform.log(`HIGH mode enabled for ${this.accessory.displayName}`);
