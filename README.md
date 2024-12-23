@@ -11,7 +11,7 @@ This is not an official Sleepme or Apple product, and may stop working without p
 * Leverage Apple Home automations to automatically adjust your Sleepme devices based on other inputs like presence, ambient temperature, and more.
 * Get low water level warnings in Home app.
 
-![main screen](https://i.imgur.com/B1jF4X2.png) ![leak sensor](https://i.imgur.com/Rkxw1OK.png) ![automation example](https://i.imgur.com/hUdXZ1C.png)
+![main screen](https://i.imgur.com/B1jF4X2.png) ![thermostat](https://i.imgur.com/xJps1Pq.png) ![leak sensor](https://i.imgur.com/Rkxw1OK.png) ![automation example](https://i.imgur.com/hUdXZ1C.png)
 
 ## Setup
 
