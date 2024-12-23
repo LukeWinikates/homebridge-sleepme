@@ -10,7 +10,6 @@ type SleepmeContext = {
 
 interface PlatformConfig {
   water_level_type?: 'battery' | 'leak' | 'motion';
-  virtual_temperature_boost_switch?: boolean;
   slow_polling_interval_minutes?: number;
 }
 
@@ -63,21 +62,20 @@ class Option<T> {
 const FAST_POLLING_INTERVAL_MS = 15 * 1000;
 const DEFAULT_SLOW_POLLING_INTERVAL_MINUTES = 15;
 const POLLING_RECENCY_THRESHOLD_MS = 60 * 1000;
+const HIGH_TEMP_THRESHOLD_F = 115;
+const HIGH_TEMP_TARGET_F = 999;
+const LOW_TEMP_THRESHOLD_F = 55;
+const LOW_TEMP_TARGET_F = -1;
 
 export class SleepmePlatformAccessory {
   private thermostatService: Service;
   private waterLevelService: Service;
-  private highModeService: Service;
-  private tempBoostService?: Service;
   private deviceStatus: DeviceStatus | null;
   private lastInteractionTime: Date;
   private timeout: NodeJS.Timeout | undefined;
   private readonly waterLevelType: 'battery' | 'leak' | 'motion';
-  private tempBoostEnabled: boolean = false;
-  private readonly TEMP_BOOST_AMOUNT = 20;
-  private readonly HIGH_MODE_TEMP = 999;
-  private readonly hasTemperatureBoost: boolean;
   private readonly slowPollingIntervalMs: number;
+  private previousHeatingCoolingState: number | null = null;
 
   constructor(
     private readonly platform: SleepmePlatform,
@@ -92,7 +90,6 @@ export class SleepmePlatformAccessory {
     // Get configuration
     const config = this.platform.config as PlatformConfig;
     this.waterLevelType = config.water_level_type || 'battery';
-    this.hasTemperatureBoost = config.virtual_temperature_boost_switch === true;
     
     // Set up polling interval from config or use default
     const configuredMinutes = config.slow_polling_interval_minutes;
@@ -112,22 +109,16 @@ export class SleepmePlatformAccessory {
     // Debug log the configuration
     this.platform.log.debug('Configuration:', JSON.stringify(config));
     this.platform.log.debug(`Water level type configured as: ${this.waterLevelType}`);
-    
-    if (this.hasTemperatureBoost) {
-      this.platform.log.debug('Temperature boost switch enabled in config');
-    }
 
     // Initialize service bindings first
     this.thermostatService = this.accessory.getService(this.platform.Service.Thermostat) ||
       this.accessory.addService(this.platform.Service.Thermostat, `${this.accessory.displayName} - Dock Pro`);
 
-    this.highModeService = this.accessory.getService('High Mode') ||
-      this.accessory.addService(this.platform.Service.Switch, 'High Mode', 'high-mode');
-
     // Remove any existing water level services first
     const existingBatteryService = this.accessory.getService(this.platform.Service.Battery);
     const existingLeakService = this.accessory.getService(this.platform.Service.LeakSensor);
     const existingMotionService = this.accessory.getService(this.platform.Service.MotionSensor);
+    const existingHighModeService = this.accessory.getService('High Mode');
     const existingBoostService = this.accessory.getService('Temperature Boost');
     
     // Debug existing services
@@ -148,7 +139,11 @@ export class SleepmePlatformAccessory {
       this.platform.log.debug('Removing existing motion service');
       this.accessory.removeService(existingMotionService);
     }
-    if (existingBoostService && !this.hasTemperatureBoost) {
+    if (existingHighModeService) {
+      this.platform.log.debug('Removing existing high mode service');
+      this.accessory.removeService(existingHighModeService);
+    }
+    if (existingBoostService) {
       this.platform.log.debug('Removing existing temperature boost service');
       this.accessory.removeService(existingBoostService);
     }
@@ -225,48 +220,6 @@ export class SleepmePlatformAccessory {
           .orElse(50));
     }
 
-    // Initialize HIGH mode switch characteristics
-    this.highModeService.getCharacteristic(Characteristic.On)
-      .onGet(() => new Option(this.deviceStatus)
-        .map(ds => ds.control.set_temperature_f >= this.HIGH_MODE_TEMP)
-        .orElse(false))
-      .onSet(async (value: CharacteristicValue) => {
-        if (value) {
-          // First check if we need to turn the device on
-          if (this.deviceStatus?.control.thermal_control_status === 'standby') {
-            this.platform.log(`Device is in standby, activating before enabling HIGH mode`);
-            await client.setThermalControlStatus(device.id, 'active');
-          }
-          
-          return client.setTemperatureFahrenheit(device.id, this.HIGH_MODE_TEMP)
-            .then(r => {
-              this.platform.log(`HIGH mode enabled for ${this.accessory.displayName}`);
-              this.updateControlFromResponse(r);
-            });
-        } else {
-          const defaultTemp = 85;
-          return client.setTemperatureFahrenheit(device.id, defaultTemp)
-            .then(r => {
-              this.platform.log(`HIGH mode disabled for ${this.accessory.displayName}`);
-              this.updateControlFromResponse(r);
-            });
-        }
-      });
-
-    // Initialize temperature boost switch if enabled
-    if (this.hasTemperatureBoost) {
-      this.tempBoostService = this.accessory.getService('Temperature Boost') ||
-        this.accessory.addService(this.platform.Service.Switch, 'Temperature Boost', 'temp-boost');
-
-      this.tempBoostService.getCharacteristic(Characteristic.On)
-        .onGet(() => this.tempBoostEnabled)
-        .onSet((value: CharacteristicValue) => {
-          this.tempBoostEnabled = value as boolean;
-          this.platform.log(`Temperature boost ${value ? 'enabled' : 'disabled'} for ${this.accessory.displayName}`);
-          this.publishUpdates();
-        });
-    }
-
     // Initialize thermostat characteristics
     this.thermostatService.getCharacteristic(Characteristic.CurrentHeatingCoolingState)
       .onGet(() => new Option(this.deviceStatus)
@@ -289,15 +242,6 @@ export class SleepmePlatformAccessory {
         const targetState = (value === Characteristic.TargetHeatingCoolingState.OFF) ? 'standby' : 'active';
         this.platform.log(`setting TargetHeatingCoolingState for ${this.accessory.displayName} to ${targetState} (${value})`);
         
-        // If turning OFF and HIGH mode switch is ON, disable HIGH mode first
-        const highModeEnabled = await this.highModeService.getCharacteristic(Characteristic.On).handleGetRequest();
-        if (value === Characteristic.TargetHeatingCoolingState.OFF && highModeEnabled) {
-          this.platform.log(`Disabling HIGH mode before turning off thermostat`);
-          const defaultTemp = 85;
-          await client.setTemperatureFahrenheit(device.id, defaultTemp);
-          this.highModeService.updateCharacteristic(Characteristic.On, false);
-        }
-        
         return client.setThermalControlStatus(device.id, targetState)
           .then(r => {
             this.platform.log(`response (${this.accessory.displayName}): ${r.status}`);
@@ -313,32 +257,46 @@ export class SleepmePlatformAccessory {
     this.thermostatService.getCharacteristic(Characteristic.TargetTemperature)
       .setProps({
         minValue: 12,
-        maxValue: 47,
+        maxValue: 46.7,
         minStep: 0.5
       })
       .onGet(() => new Option(this.deviceStatus)
         .map(ds => {
-          const tempC = ds.control.set_temperature_c;
-          if (ds.control.set_temperature_f >= this.HIGH_MODE_TEMP) {
-            return 38;
+          // Handle both high and low special temperature cases
+          if (ds.control.set_temperature_f >= HIGH_TEMP_TARGET_F) {
+            return 46.7; // Maximum allowed Celsius temperature
+          } else if (ds.control.set_temperature_f <= LOW_TEMP_TARGET_F) {
+            return 12.2; // 54°F in Celsius
           }
-          return this.hasTemperatureBoost && this.tempBoostEnabled ? 
-            tempC - (this.TEMP_BOOST_AMOUNT * 5/9) : tempC;
+          const tempC = ds.control.set_temperature_c;
+          const tempF = (tempC * (9/5)) + 32;
+          this.platform.log(`Current target temperature: ${tempC}°C (${tempF.toFixed(1)}°F)`);
+          return tempC;
         })
-        .orElse(10))
+        .orElse(21))
       .onSet(async (value: CharacteristicValue) => {
-        const adjustedValue = this.hasTemperatureBoost && this.tempBoostEnabled ? 
-          (value as number) + (this.TEMP_BOOST_AMOUNT * 5/9) : 
-          value as number;
+        const tempC = value as number;
+        let tempF = (tempC * (9 / 5)) + 32;
         
-        const tempF = Math.floor((adjustedValue * (9 / 5)) + 32);
-        this.platform.log(`setting TargetTemperature for ${this.accessory.displayName} to ${tempF}F (${adjustedValue}C)`);
+        // Round to nearest whole number for API call
+        tempF = Math.round(tempF);
         
-        return client.setTemperatureFahrenheit(device.id, tempF)
-          .then(r => {
-            this.platform.log(`response (${this.accessory.displayName}): ${r.status}`);
-            this.updateControlFromResponse(r);
-          });
+        // Map temperatures over threshold to HIGH_TEMP_TARGET_F
+        // and under threshold to LOW_TEMP_TARGET_F
+        if (tempF > HIGH_TEMP_THRESHOLD_F) {
+          this.platform.log(`Temperature over ${HIGH_TEMP_THRESHOLD_F}F, mapping to ${HIGH_TEMP_TARGET_F}F for API call`);
+          await client.setTemperatureFahrenheit(device.id, HIGH_TEMP_TARGET_F);
+        } else if (tempF < LOW_TEMP_THRESHOLD_F) {
+          this.platform.log(`Temperature under ${LOW_TEMP_THRESHOLD_F}F, mapping to ${LOW_TEMP_TARGET_F}F for API call`);
+          await client.setTemperatureFahrenheit(device.id, LOW_TEMP_TARGET_F);
+        } else {
+          this.platform.log(`Setting temperature to: ${tempC}°C (${tempF}°F)`);
+          await client.setTemperatureFahrenheit(device.id, tempF);
+        }
+        
+        const r = await client.getDeviceStatus(device.id);
+        this.deviceStatus = r.data;  // Update full device status
+        this.publishUpdates();
       });
 
     this.thermostatService.getCharacteristic(Characteristic.TemperatureDisplayUnits)
@@ -347,7 +305,7 @@ export class SleepmePlatformAccessory {
         .orElse(1));
   }
 
-  private scheduleNextCheck(poller: () => Promise<DeviceStatus>) {
+private scheduleNextCheck(poller: () => Promise<DeviceStatus>) {
     const timeSinceLastInteractionMS = new Date().valueOf() - this.lastInteractionTime.valueOf();
     clearTimeout(this.timeout);
     this.timeout = setTimeout(() => {
@@ -387,7 +345,7 @@ export class SleepmePlatformAccessory {
     if (this.waterLevelType === 'leak') {
       this.waterLevelService.updateCharacteristic(
         Characteristic.LeakDetected,
-        s.status.is_water_low ? 
+        s.status.is_water_low ?
           Characteristic.LeakDetected.LEAK_DETECTED : 
           Characteristic.LeakDetected.LEAK_NOT_DETECTED
       );
@@ -401,23 +359,7 @@ export class SleepmePlatformAccessory {
       this.waterLevelService.updateCharacteristic(Characteristic.StatusLowBattery, s.status.is_water_low);
     }
 
-    // Update HIGH mode switch
-    const isHighMode = s.control.set_temperature_f >= this.HIGH_MODE_TEMP;
-    this.highModeService.updateCharacteristic(Characteristic.On, isHighMode);
-
-    // Update temperature boost switch if it exists
-    if (this.hasTemperatureBoost && this.tempBoostService) {
-      this.tempBoostService.updateCharacteristic(Characteristic.On, this.tempBoostEnabled);
-    }
-
-    // Update thermostat characteristics with boost adjustment
-    let displayTargetTemp = s.control.set_temperature_c;
-    if (isHighMode) {
-      displayTargetTemp = 38;
-    } else if (this.hasTemperatureBoost && this.tempBoostEnabled) {
-      displayTargetTemp -= (this.TEMP_BOOST_AMOUNT * 5/9);
-    }
-
+    // Update thermostat characteristics
     this.thermostatService.updateCharacteristic(Characteristic.TemperatureDisplayUnits, 
       s.control.display_temperature_unit === 'c' ? 0 : 1);
     this.thermostatService.updateCharacteristic(Characteristic.CurrentHeatingCoolingState, currentState);
@@ -425,14 +367,30 @@ export class SleepmePlatformAccessory {
       s.control.thermal_control_status === 'standby' ? 
         Characteristic.TargetHeatingCoolingState.OFF : 
         Characteristic.TargetHeatingCoolingState.AUTO);
-    this.thermostatService.updateCharacteristic(Characteristic.CurrentTemperature, s.status.water_temperature_c);
-    this.thermostatService.updateCharacteristic(Characteristic.TargetTemperature, displayTargetTemp);
     
-    this.platform.log(`Updated heating/cooling state to: ${currentState} (0=OFF, 1=HEAT, 2=COOL)`);
-    if (this.hasTemperatureBoost) {
-      this.platform.log(`Temperature boost enabled: ${this.tempBoostEnabled}, High mode: ${isHighMode}`);
+    // Log current water temperature in both units
+    const currentTempC = s.status.water_temperature_c;
+    const currentTempF = (currentTempC * (9/5)) + 32;
+    this.platform.log(`Current water temperature: ${currentTempC}°C (${currentTempF.toFixed(1)}°F)`);
+    this.thermostatService.updateCharacteristic(Characteristic.CurrentTemperature, currentTempC);
+
+    // Handle both high and low temperature special cases
+    const targetTempF = s.control.set_temperature_f;
+    let displayTempC;
+    if (targetTempF >= HIGH_TEMP_TARGET_F) {
+      displayTempC = 46.7;
+    } else if (targetTempF <= LOW_TEMP_TARGET_F) {
+      displayTempC = 12.2; // 54°F in Celsius
     } else {
-      this.platform.log(`High mode: ${isHighMode}`);
+      displayTempC = s.control.set_temperature_c;
+    }
+    this.platform.log(`Target temperature: ${displayTempC}°C (${targetTempF}°F)`);
+    this.thermostatService.updateCharacteristic(Characteristic.TargetTemperature, displayTempC);
+    
+    // Only log if the heating/cooling state has changed
+    if (this.previousHeatingCoolingState !== currentState) {
+      this.platform.log(`Updated heating/cooling state to: ${currentState} (0=OFF, 1=HEAT, 2=COOL)`);
+      this.previousHeatingCoolingState = currentState;
     }
   }
 }
