@@ -50,7 +50,10 @@ There are additional configuration options that can be set to tailor the plugin 
 * Adjust the temperature of your dock based on the temperature in your bedroom or outside.
 * Have Siri remind you to top off the water in your dock once per day if the water level is low.
 
+## Notes
 
+* Setting the target temperature to the minimum value (54F) puts the dock in LOW mode. Setting the target temperature to the maximum value (116F) puts the dock in HIGH mode.
+  
 ## Troubleshooting
 
 This plugin is known to work with the Dock Pro, and has not been tested with other Sleepme devices.
