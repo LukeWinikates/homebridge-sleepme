@@ -421,7 +421,10 @@ export class SleepmePlatformAccessory {
     this.thermostatService.updateCharacteristic(Characteristic.TemperatureDisplayUnits, 
       s.control.display_temperature_unit === 'c' ? 0 : 1);
     this.thermostatService.updateCharacteristic(Characteristic.CurrentHeatingCoolingState, currentState);
-    this.thermostatService.updateCharacteristic(Characteristic.TargetHeatingCoolingState, currentState);
+    this.thermostatService.updateCharacteristic(Characteristic.TargetHeatingCoolingState, 
+      s.control.thermal_control_status === 'standby' ? 
+        Characteristic.TargetHeatingCoolingState.OFF : 
+        Characteristic.TargetHeatingCoolingState.AUTO);
     this.thermostatService.updateCharacteristic(Characteristic.CurrentTemperature, s.status.water_temperature_c);
     this.thermostatService.updateCharacteristic(Characteristic.TargetTemperature, displayTargetTemp);
     
