@@ -64,6 +64,8 @@ const DEFAULT_SLOW_POLLING_INTERVAL_MINUTES = 15;
 const POLLING_RECENCY_THRESHOLD_MS = 60 * 1000;
 const HIGH_TEMP_THRESHOLD_F = 115;
 const HIGH_TEMP_TARGET_F = 999;
+const LOW_TEMP_THRESHOLD_F = 55;
+const LOW_TEMP_TARGET_F = -1;
 
 export class SleepmePlatformAccessory {
   private thermostatService: Service;
@@ -252,7 +254,7 @@ export class SleepmePlatformAccessory {
         .map(ds => ds.status.water_temperature_c)
         .orElse(-270));
 
-this.thermostatService.getCharacteristic(Characteristic.TargetTemperature)
+    this.thermostatService.getCharacteristic(Characteristic.TargetTemperature)
       .setProps({
         minValue: 12,
         maxValue: 46.7,
@@ -260,9 +262,11 @@ this.thermostatService.getCharacteristic(Characteristic.TargetTemperature)
       })
       .onGet(() => new Option(this.deviceStatus)
         .map(ds => {
-          // If the actual set temperature is 999F, return the maximum allowed Celsius
+          // Handle both high and low special temperature cases
           if (ds.control.set_temperature_f >= HIGH_TEMP_TARGET_F) {
             return 46.7; // Maximum allowed Celsius temperature
+          } else if (ds.control.set_temperature_f <= LOW_TEMP_TARGET_F) {
+            return 12.2; // 54°F in Celsius
           }
           const tempC = ds.control.set_temperature_c;
           const tempF = (tempC * (9/5)) + 32;
@@ -278,9 +282,13 @@ this.thermostatService.getCharacteristic(Characteristic.TargetTemperature)
         tempF = Math.round(tempF);
         
         // Map temperatures over threshold to HIGH_TEMP_TARGET_F
+        // and under threshold to LOW_TEMP_TARGET_F
         if (tempF > HIGH_TEMP_THRESHOLD_F) {
           this.platform.log(`Temperature over ${HIGH_TEMP_THRESHOLD_F}F, mapping to ${HIGH_TEMP_TARGET_F}F for API call`);
           await client.setTemperatureFahrenheit(device.id, HIGH_TEMP_TARGET_F);
+        } else if (tempF < LOW_TEMP_THRESHOLD_F) {
+          this.platform.log(`Temperature under ${LOW_TEMP_THRESHOLD_F}F, mapping to ${LOW_TEMP_TARGET_F}F for API call`);
+          await client.setTemperatureFahrenheit(device.id, LOW_TEMP_TARGET_F);
         } else {
           this.platform.log(`Setting temperature to: ${tempC}°C (${tempF}°F)`);
           await client.setTemperatureFahrenheit(device.id, tempF);
@@ -297,7 +305,7 @@ this.thermostatService.getCharacteristic(Characteristic.TargetTemperature)
         .orElse(1));
   }
 
-  private scheduleNextCheck(poller: () => Promise<DeviceStatus>) {
+private scheduleNextCheck(poller: () => Promise<DeviceStatus>) {
     const timeSinceLastInteractionMS = new Date().valueOf() - this.lastInteractionTime.valueOf();
     clearTimeout(this.timeout);
     this.timeout = setTimeout(() => {
@@ -366,9 +374,16 @@ this.thermostatService.getCharacteristic(Characteristic.TargetTemperature)
     this.platform.log(`Current water temperature: ${currentTempC}°C (${currentTempF.toFixed(1)}°F)`);
     this.thermostatService.updateCharacteristic(Characteristic.CurrentTemperature, currentTempC);
 
-    // If actual temperature is 999F, display maximum allowed temperature
+    // Handle both high and low temperature special cases
     const targetTempF = s.control.set_temperature_f;
-    const displayTempC = targetTempF >= HIGH_TEMP_TARGET_F ? 46.7 : s.control.set_temperature_c;
+    let displayTempC;
+    if (targetTempF >= HIGH_TEMP_TARGET_F) {
+      displayTempC = 46.7;
+    } else if (targetTempF <= LOW_TEMP_TARGET_F) {
+      displayTempC = 12.2; // 54°F in Celsius
+    } else {
+      displayTempC = s.control.set_temperature_c;
+    }
     this.platform.log(`Target temperature: ${displayTempC}°C (${targetTempF}°F)`);
     this.thermostatService.updateCharacteristic(Characteristic.TargetTemperature, displayTempC);
     
