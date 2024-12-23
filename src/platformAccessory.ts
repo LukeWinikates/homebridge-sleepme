@@ -252,7 +252,7 @@ export class SleepmePlatformAccessory {
         .map(ds => ds.status.water_temperature_c)
         .orElse(-270));
 
-	this.thermostatService.getCharacteristic(Characteristic.TargetTemperature)
+this.thermostatService.getCharacteristic(Characteristic.TargetTemperature)
       .setProps({
         minValue: 12,
         maxValue: 46.7,
@@ -272,7 +272,10 @@ export class SleepmePlatformAccessory {
         .orElse(10))
       .onSet(async (value: CharacteristicValue) => {
         const tempC = value as number;
-        let tempF = Math.floor((tempC * (9 / 5)) + 32);
+        let tempF = (tempC * (9 / 5)) + 32;
+        
+        // Round to nearest whole number for API call
+        tempF = Math.round(tempF);
         
         // Map temperatures over threshold to HIGH_TEMP_TARGET_F
         if (tempF > HIGH_TEMP_THRESHOLD_F) {
