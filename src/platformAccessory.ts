@@ -280,7 +280,8 @@ export class SleepmePlatformAccessory {
         }
         
         const r = await client.getDeviceStatus(device.id);
-        this.updateControlFromResponse(r);
+        this.deviceStatus = r.data;  // Update full device status
+        this.publishUpdates();
       });
 
     this.thermostatService.getCharacteristic(Characteristic.TemperatureDisplayUnits)
@@ -329,7 +330,7 @@ export class SleepmePlatformAccessory {
     if (this.waterLevelType === 'leak') {
       this.waterLevelService.updateCharacteristic(
         Characteristic.LeakDetected,
-        s.status.is_water_low ? 
+        s.status.is_water_low ?
           Characteristic.LeakDetected.LEAK_DETECTED : 
           Characteristic.LeakDetected.LEAK_NOT_DETECTED
       );
