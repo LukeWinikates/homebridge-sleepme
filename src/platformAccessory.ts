@@ -9,16 +9,26 @@ type SleepmeContext = {
 };
 
 interface Mapper {
-  toHeatingCoolingState: (status: DeviceStatus) => 0 | 2;
+  toCurrentHeatingCoolingState: (status: DeviceStatus) => 0 | 1 | 2;
+  toTargetHeatingCoolingState: (status: DeviceStatus) => 0 | 3;
 }
 
 function newMapper(platform: SleepmePlatform): Mapper {
   const {Characteristic} = platform;
   return {
-    toHeatingCoolingState: (status: DeviceStatus): 0 | 2 => {
+    toCurrentHeatingCoolingState: (status: DeviceStatus): 0 | 1 | 2 => {
+      if (status.control.thermal_control_status === 'standby') {
+        return Characteristic.CurrentHeatingCoolingState.OFF;
+      }
+      if (status.control.set_temperature_c <= status.status.water_temperature_c) {
+        return Characteristic.CurrentHeatingCoolingState.COOL;
+      }
+      return Characteristic.CurrentHeatingCoolingState.HEAT;
+    },
+    toTargetHeatingCoolingState: (status: DeviceStatus): 0 | 3 => {
       return status.control.thermal_control_status === 'standby' ?
-        Characteristic.CurrentHeatingCoolingState.OFF :
-        Characteristic.CurrentHeatingCoolingState.COOL;
+        Characteristic.TargetHeatingCoolingState.OFF :
+        Characteristic.TargetHeatingCoolingState.AUTO;
     },
   };
 }
@@ -94,12 +104,13 @@ export class SleepmePlatformAccessory {
     // create handlers for required characteristics
     this.thermostatService.getCharacteristic(Characteristic.CurrentHeatingCoolingState)
       .onGet(() => new Option(this.deviceStatus)
-        .map(ds => mapper.toHeatingCoolingState(ds))
+        .map(ds => mapper.toCurrentHeatingCoolingState(ds))
         .orElse(0));
 
     this.thermostatService.getCharacteristic(Characteristic.TargetHeatingCoolingState)
+      .setProps({validValues:[Characteristic.TargetHeatingCoolingState.AUTO, Characteristic.TargetHeatingCoolingState.OFF]})
       .onGet(() => new Option(this.deviceStatus)
-        .map(ds => mapper.toHeatingCoolingState(ds))
+        .map(ds => mapper.toTargetHeatingCoolingState(ds))
         .orElse(0))
       .onSet(async (value: CharacteristicValue) => {
         const targetState = (value === 0) ? 'standby' : 'active';
@@ -194,8 +205,8 @@ export class SleepmePlatformAccessory {
     this.batteryService.updateCharacteristic(Characteristic.BatteryLevel, s.status.water_level);
     this.batteryService.updateCharacteristic(Characteristic.StatusLowBattery, s.status.is_water_low);
     this.thermostatService.updateCharacteristic(Characteristic.TemperatureDisplayUnits, s.control.display_temperature_unit === 'c' ? 0 : 1);
-    this.thermostatService.updateCharacteristic(Characteristic.CurrentHeatingCoolingState, mapper.toHeatingCoolingState(s));
-    this.thermostatService.updateCharacteristic(Characteristic.TargetHeatingCoolingState, mapper.toHeatingCoolingState(s));
+    this.thermostatService.updateCharacteristic(Characteristic.CurrentHeatingCoolingState, mapper.toCurrentHeatingCoolingState(s));
+    this.thermostatService.updateCharacteristic(Characteristic.TargetHeatingCoolingState, mapper.toTargetHeatingCoolingState(s));
     this.thermostatService.updateCharacteristic(Characteristic.CurrentTemperature, s.status.water_temperature_c);
     this.thermostatService.updateCharacteristic(Characteristic.TargetTemperature, s.control.set_temperature_c);
   }
