@@ -274,16 +274,24 @@ export class SleepmePlatformAccessory {
         .orElse(0));
 
     this.thermostatService.getCharacteristic(Characteristic.TargetHeatingCoolingState)
+      .setProps({
+        validValues: [
+          Characteristic.TargetHeatingCoolingState.OFF,  // 0
+          Characteristic.TargetHeatingCoolingState.AUTO  // 3
+        ]
+      })
       .onGet(() => new Option(this.deviceStatus)
-        .map(ds => newMapper(this.platform).toHeatingCoolingState(ds))
-        .orElse(0))
+        .map(ds => ds.control.thermal_control_status === 'standby' ? 
+          Characteristic.TargetHeatingCoolingState.OFF : 
+          Characteristic.TargetHeatingCoolingState.AUTO)
+        .orElse(Characteristic.TargetHeatingCoolingState.OFF))
       .onSet(async (value: CharacteristicValue) => {
-        const targetState = (value === 0) ? 'standby' : 'active';
+        const targetState = (value === Characteristic.TargetHeatingCoolingState.OFF) ? 'standby' : 'active';
         this.platform.log(`setting TargetHeatingCoolingState for ${this.accessory.displayName} to ${targetState} (${value})`);
         
         // If turning OFF and HIGH mode switch is ON, disable HIGH mode first
         const highModeEnabled = await this.highModeService.getCharacteristic(Characteristic.On).handleGetRequest();
-        if (value === 0 && highModeEnabled) {
+        if (value === Characteristic.TargetHeatingCoolingState.OFF && highModeEnabled) {
           this.platform.log(`Disabling HIGH mode before turning off thermostat`);
           const defaultTemp = 85;
           await client.setTemperatureFahrenheit(device.id, defaultTemp);
