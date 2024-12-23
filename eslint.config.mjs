@@ -3,6 +3,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import js from "@eslint/js";
 import { FlatCompat } from "@eslint/eslintrc";
+import stylistic from '@stylistic/eslint-plugin';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -24,6 +25,9 @@ export default [{
         ecmaVersion: 2018,
         sourceType: "module",
     },
+    plugins: {
+        '@stylistic': stylistic
+    },
 
     rules: {
         quotes: ["warn", "single"],
@@ -31,6 +35,7 @@ export default [{
         indent: ["warn", 2, {
             SwitchCase: 1,
         }],
+        '@stylistic/eol-last': ['error'],
 
         semi: ["off"],
         "comma-dangle": ["warn", "always-multiline"],
