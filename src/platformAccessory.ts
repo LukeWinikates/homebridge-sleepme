@@ -73,6 +73,7 @@ export class SleepmePlatformAccessory {
   private timeout: NodeJS.Timeout | undefined;
   private readonly waterLevelType: 'battery' | 'leak' | 'motion';
   private readonly slowPollingIntervalMs: number;
+  private previousHeatingCoolingState: number | null = null;
 
   constructor(
     private readonly platform: SleepmePlatform,
@@ -254,11 +255,17 @@ export class SleepmePlatformAccessory {
     this.thermostatService.getCharacteristic(Characteristic.TargetTemperature)
       .setProps({
         minValue: 12,
-        maxValue: 46.5,
+        maxValue: 46.7,
         minStep: 0.5
       })
       .onGet(() => new Option(this.deviceStatus)
-        .map(ds => ds.control.set_temperature_c)
+        .map(ds => {
+          // If the actual set temperature is 999F, return the maximum allowed Celsius
+          if (ds.control.set_temperature_f >= HIGH_TEMP_TARGET_F) {
+            return 46.7; // Maximum allowed Celsius temperature
+          }
+          return ds.control.set_temperature_c;
+        })
         .orElse(10))
       .onSet(async (value: CharacteristicValue) => {
         const tempC = value as number;
@@ -266,17 +273,14 @@ export class SleepmePlatformAccessory {
         
         // Map temperatures over threshold to HIGH_TEMP_TARGET_F
         if (tempF > HIGH_TEMP_THRESHOLD_F) {
-          tempF = HIGH_TEMP_TARGET_F;
-          this.platform.log(`Temperature over ${HIGH_TEMP_THRESHOLD_F}F, mapping to ${HIGH_TEMP_TARGET_F}F`);
+          this.platform.log(`Temperature over ${HIGH_TEMP_THRESHOLD_F}F, mapping to ${HIGH_TEMP_TARGET_F}F for API call`);
+          await client.setTemperatureFahrenheit(device.id, HIGH_TEMP_TARGET_F);
+        } else {
+          await client.setTemperatureFahrenheit(device.id, tempF);
         }
         
-        this.platform.log(`setting TargetTemperature for ${this.accessory.displayName} to ${tempF}F (${tempC}C)`);
-        
-        return client.setTemperatureFahrenheit(device.id, tempF)
-          .then(r => {
-            this.platform.log(`response (${this.accessory.displayName}): ${r.status}`);
-            this.updateControlFromResponse(r);
-          });
+        const r = await client.getDeviceStatus(device.id);
+        this.updateControlFromResponse(r);
       });
 
     this.thermostatService.getCharacteristic(Characteristic.TemperatureDisplayUnits)
@@ -326,7 +330,7 @@ export class SleepmePlatformAccessory {
       this.waterLevelService.updateCharacteristic(
         Characteristic.LeakDetected,
         s.status.is_water_low ? 
-		  Characteristic.LeakDetected.LEAK_DETECTED : 
+          Characteristic.LeakDetected.LEAK_DETECTED : 
           Characteristic.LeakDetected.LEAK_NOT_DETECTED
       );
     } else if (this.waterLevelType === 'motion') {
@@ -348,8 +352,15 @@ export class SleepmePlatformAccessory {
         Characteristic.TargetHeatingCoolingState.OFF : 
         Characteristic.TargetHeatingCoolingState.AUTO);
     this.thermostatService.updateCharacteristic(Characteristic.CurrentTemperature, s.status.water_temperature_c);
-    this.thermostatService.updateCharacteristic(Characteristic.TargetTemperature, s.control.set_temperature_c);
+
+    // If actual temperature is 999F, display maximum allowed temperature
+    const displayTemp = s.control.set_temperature_f >= HIGH_TEMP_TARGET_F ? 46.7 : s.control.set_temperature_c;
+    this.thermostatService.updateCharacteristic(Characteristic.TargetTemperature, displayTemp);
     
-    this.platform.log(`Updated heating/cooling state to: ${currentState} (0=OFF, 1=HEAT, 2=COOL)`);
+    // Only log if the heating/cooling state has changed
+    if (this.previousHeatingCoolingState !== currentState) {
+      this.platform.log(`Updated heating/cooling state to: ${currentState} (0=OFF, 1=HEAT, 2=COOL)`);
+      this.previousHeatingCoolingState = currentState;
+    }
   }
 }
