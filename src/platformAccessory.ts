@@ -252,7 +252,7 @@ export class SleepmePlatformAccessory {
         .map(ds => ds.status.water_temperature_c)
         .orElse(-270));
 
-    this.thermostatService.getCharacteristic(Characteristic.TargetTemperature)
+	this.thermostatService.getCharacteristic(Characteristic.TargetTemperature)
       .setProps({
         minValue: 12,
         maxValue: 46.7,
@@ -264,7 +264,10 @@ export class SleepmePlatformAccessory {
           if (ds.control.set_temperature_f >= HIGH_TEMP_TARGET_F) {
             return 46.7; // Maximum allowed Celsius temperature
           }
-          return ds.control.set_temperature_c;
+          const tempC = ds.control.set_temperature_c;
+          const tempF = (tempC * (9/5)) + 32;
+          this.platform.log(`Current target temperature: ${tempC}°C (${tempF.toFixed(1)}°F)`);
+          return tempC;
         })
         .orElse(10))
       .onSet(async (value: CharacteristicValue) => {
@@ -276,6 +279,7 @@ export class SleepmePlatformAccessory {
           this.platform.log(`Temperature over ${HIGH_TEMP_THRESHOLD_F}F, mapping to ${HIGH_TEMP_TARGET_F}F for API call`);
           await client.setTemperatureFahrenheit(device.id, HIGH_TEMP_TARGET_F);
         } else {
+          this.platform.log(`Setting temperature to: ${tempC}°C (${tempF}°F)`);
           await client.setTemperatureFahrenheit(device.id, tempF);
         }
         
@@ -352,11 +356,18 @@ export class SleepmePlatformAccessory {
       s.control.thermal_control_status === 'standby' ? 
         Characteristic.TargetHeatingCoolingState.OFF : 
         Characteristic.TargetHeatingCoolingState.AUTO);
-    this.thermostatService.updateCharacteristic(Characteristic.CurrentTemperature, s.status.water_temperature_c);
+    
+    // Log current water temperature in both units
+    const currentTempC = s.status.water_temperature_c;
+    const currentTempF = (currentTempC * (9/5)) + 32;
+    this.platform.log(`Current water temperature: ${currentTempC}°C (${currentTempF.toFixed(1)}°F)`);
+    this.thermostatService.updateCharacteristic(Characteristic.CurrentTemperature, currentTempC);
 
     // If actual temperature is 999F, display maximum allowed temperature
-    const displayTemp = s.control.set_temperature_f >= HIGH_TEMP_TARGET_F ? 46.7 : s.control.set_temperature_c;
-    this.thermostatService.updateCharacteristic(Characteristic.TargetTemperature, displayTemp);
+    const targetTempF = s.control.set_temperature_f;
+    const displayTempC = targetTempF >= HIGH_TEMP_TARGET_F ? 46.7 : s.control.set_temperature_c;
+    this.platform.log(`Target temperature: ${displayTempC}°C (${targetTempF}°F)`);
+    this.thermostatService.updateCharacteristic(Characteristic.TargetTemperature, displayTempC);
     
     // Only log if the heating/cooling state has changed
     if (this.previousHeatingCoolingState !== currentState) {
