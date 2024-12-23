@@ -273,7 +273,7 @@ export class SleepmePlatformAccessory {
           this.platform.log(`Current target temperature: ${tempC}°C (${tempF.toFixed(1)}°F)`);
           return tempC;
         })
-        .orElse(10))
+        .orElse(21))
       .onSet(async (value: CharacteristicValue) => {
         const tempC = value as number;
         let tempF = (tempC * (9 / 5)) + 32;
