@@ -311,6 +311,11 @@ export class SleepmePlatformAccessory {
         .orElse(-270));
 
     this.thermostatService.getCharacteristic(Characteristic.TargetTemperature)
+      .setProps({
+        minValue: 12,
+        maxValue: 47,
+        minStep: 0.5
+      })
       .onGet(() => new Option(this.deviceStatus)
         .map(ds => {
           const tempC = ds.control.set_temperature_c;
