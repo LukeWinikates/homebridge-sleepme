@@ -9,10 +9,9 @@ This is not an official Sleepme or Apple product, and may stop working without p
 
 * Control multiple Sleepme devices from Apple Home - turn off your partner's device without borrowing their phone!
 * Leverage Apple Home automations to automatically adjust your Sleepme devices based on other inputs like presence, ambient temperature, and more.
-* Dedicated "high" temperature mode virtual switch.
 * Get low water level warnings in Home app.
 
-![main screen](https://i.imgur.com/B1jF4X2.png) ![virtual switches](https://i.imgur.com/XCS6fLT.png) ![leak sensor](https://i.imgur.com/Rkxw1OK.png) ![automation example](https://i.imgur.com/hUdXZ1C.png)
+![main screen](https://i.imgur.com/B1jF4X2.png) ![leak sensor](https://i.imgur.com/Rkxw1OK.png) ![automation example](https://i.imgur.com/hUdXZ1C.png)
 
 ## Setup
 
@@ -41,7 +40,6 @@ Add the API token you just created to the Sleepme plugin configuration. Save the
 There are additional configuration options that can be set to tailor the plugin to your preference:
 
 * **Low Water Level Alert Type**: _None, battery, leak, or motion_. Select the type of virtual sensor that will be generated to represent the water level of your device. By default, "battery" is used and the water level will be represented as the thermostat device's battery level. Leak sensor or motion sensor may be preferable for purposes of using Apple home automations triggered by "leak detected" or "motion detected".
-* **Virtual Temperature Boost Switch**: Adds 20 degrees to the target temperature. Homekit thermostats only support target temperatures up to 100F, while the Sleepme Dock supports up to 115. In order to utilize this temperature range of the dock, you can turn on this virtual temperature boost switch to add 20 degrees to whatever temperature you choose. For example, if you want to heat to 110F, you'd turn on the temperature boost switch AND set the thermostat to 90. It will tell the dock to warm to 110. If you turn the switch off, it'll set back to 90. This switch is not enabled by default to prevent confusion. If you understand and want to use it, enable it in the plugin config.
 * **API Polling Interval**: This value represents how many minutes the plugin will wait between each poll of the sleepme API to update the devices' status. This interval is automatically faster/shorter for a period of time after you control the thermostat, so this configuration value is for the slow/idle polling time. By default it's 15 minutes. If you want more frequent updates, lower the number. If you get errors or rate limits, increase the number. Keep in mind the number of API calls made is multiplied by the number of devices you have. If you have two docks, two API calls are made at each interval.
 
 ## Automation Examples
@@ -52,13 +50,6 @@ There are additional configuration options that can be set to tailor the plugin 
 * Adjust the temperature of your dock based on the temperature in your bedroom or outside.
 * Have Siri remind you to top off the water in your dock once per day if the water level is low.
 
-## Notes
-
-The virtual switches created for each dock will show up as sub-devices of the main device, and by default they will have the same name as the parent device. If you "edit" the switch(es) in Apple Home app and delete the name, it will reveal which switch it is. For example, if your dock is named "master bedroom", this plugin will create a thermostat device called "master bedroom" with a child switch called "master bedroom". But if you EDIT the child switch and delete the name "master bedroom", it will reveal "high mode". The same applies to the temperature boost switch, if enabled.
-
-Turning on the "high" temperature mode switch also turns on the dock. Turning OFF the "high" switch doesn't turn off the dock, it just turns off "high" mode.
-
-The thermostat device's mode is automatically displayed based on the difference between the current and target temperature. If the dock is active and the target temperature is higher than the current temperature, it will show heat mode. If the target temperature is lower than the current temperature, it will show cool mode. This functionality, as well as manually changing "modes" in homekit, do not actually make any difference to the backend/dock and are just for aesthetics.
 
 ## Troubleshooting
 
