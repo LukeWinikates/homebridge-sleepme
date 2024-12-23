@@ -274,16 +274,24 @@ export class SleepmePlatformAccessory {
         .orElse(0));
 
     this.thermostatService.getCharacteristic(Characteristic.TargetHeatingCoolingState)
+      .setProps({
+        validValues: [
+          Characteristic.TargetHeatingCoolingState.OFF,  // 0
+          Characteristic.TargetHeatingCoolingState.AUTO  // 3
+        ]
+      })
       .onGet(() => new Option(this.deviceStatus)
-        .map(ds => newMapper(this.platform).toHeatingCoolingState(ds))
-        .orElse(0))
+        .map(ds => ds.control.thermal_control_status === 'standby' ? 
+          Characteristic.TargetHeatingCoolingState.OFF : 
+          Characteristic.TargetHeatingCoolingState.AUTO)
+        .orElse(Characteristic.TargetHeatingCoolingState.OFF))
       .onSet(async (value: CharacteristicValue) => {
-        const targetState = (value === 0) ? 'standby' : 'active';
+        const targetState = (value === Characteristic.TargetHeatingCoolingState.OFF) ? 'standby' : 'active';
         this.platform.log(`setting TargetHeatingCoolingState for ${this.accessory.displayName} to ${targetState} (${value})`);
         
         // If turning OFF and HIGH mode switch is ON, disable HIGH mode first
         const highModeEnabled = await this.highModeService.getCharacteristic(Characteristic.On).handleGetRequest();
-        if (value === 0 && highModeEnabled) {
+        if (value === Characteristic.TargetHeatingCoolingState.OFF && highModeEnabled) {
           this.platform.log(`Disabling HIGH mode before turning off thermostat`);
           const defaultTemp = 85;
           await client.setTemperatureFahrenheit(device.id, defaultTemp);
@@ -303,6 +311,11 @@ export class SleepmePlatformAccessory {
         .orElse(-270));
 
     this.thermostatService.getCharacteristic(Characteristic.TargetTemperature)
+      .setProps({
+        minValue: 12,
+        maxValue: 47,
+        minStep: 0.5
+      })
       .onGet(() => new Option(this.deviceStatus)
         .map(ds => {
           const tempC = ds.control.set_temperature_c;
@@ -408,7 +421,10 @@ export class SleepmePlatformAccessory {
     this.thermostatService.updateCharacteristic(Characteristic.TemperatureDisplayUnits, 
       s.control.display_temperature_unit === 'c' ? 0 : 1);
     this.thermostatService.updateCharacteristic(Characteristic.CurrentHeatingCoolingState, currentState);
-    this.thermostatService.updateCharacteristic(Characteristic.TargetHeatingCoolingState, currentState);
+    this.thermostatService.updateCharacteristic(Characteristic.TargetHeatingCoolingState, 
+      s.control.thermal_control_status === 'standby' ? 
+        Characteristic.TargetHeatingCoolingState.OFF : 
+        Characteristic.TargetHeatingCoolingState.AUTO);
     this.thermostatService.updateCharacteristic(Characteristic.CurrentTemperature, s.status.water_temperature_c);
     this.thermostatService.updateCharacteristic(Characteristic.TargetTemperature, displayTargetTemp);
     
