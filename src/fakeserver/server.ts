@@ -4,7 +4,12 @@ import {createServer, IncomingMessage} from 'node:http';
 import {Control, Device, DeviceStatus} from '../sleepme/client';
 import * as crypto from 'node:crypto';
 
-export type FakeServer = { host: string; stop: () => Promise<string>; token: string };
+export type FakeServer = {
+  host: string;
+  stop: () => Promise<string>;
+  token: string;
+  requests: Record<string, number>
+};
 
 function fakeDevice(): DeviceStatus {
   return {
@@ -36,8 +41,6 @@ function fakeDevice(): DeviceStatus {
 
 function parseBody(req: InstanceType<typeof IncomingMessage>): Promise<string> {
   let requestBody: string = '';
-  // let changes = JSON.parse<Control>(req.);
-
   return new Promise((resolve, reject) => {
     req.on('data', (chunk) => {
       requestBody += chunk;
@@ -60,6 +63,7 @@ export function start(): FakeServer {
     name: 'Device 1',
     id: '1',
   }];
+  const requests: Record<string, number> = {};
   const statuses: Record<string, DeviceStatus> = {
     '1': fakeDevice(),
   };
@@ -68,6 +72,9 @@ export function start(): FakeServer {
       res.statusCode = 403;
       res.end('unauthorized');
       return;
+    }
+    if (req.url) {
+      requests[req.url] = (requests[req.url] ?? 0) + 1;
     }
     if (req.url === '/v1/devices') {
       res.statusCode = 200;
@@ -125,5 +132,6 @@ export function start(): FakeServer {
       });
     },
     token: token,
+    requests: requests,
   };
 }

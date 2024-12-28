@@ -1,6 +1,6 @@
 import axios, {AxiosInstance} from 'axios';
 
-type ClientResponse<T> = {
+export type ClientResponse<T> = {
   data: T;
   status: number;
 };
