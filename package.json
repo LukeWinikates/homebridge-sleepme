@@ -27,7 +27,7 @@
     "test": "jest"
   },
   "keywords": [
-    "homebridge-plugin"
+    "homebridge-plugin", "sleepme"
   ],
   "devDependencies": {
     "@babel/core": "^7.25.2",
