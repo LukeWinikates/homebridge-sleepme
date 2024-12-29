@@ -6,6 +6,11 @@
   "schema": {
     "type": "object",
     "properties": {
+      "name": {
+        "title": "Homebridge Sleepme",
+        "type": "string",
+        "required": true
+      },
       "api_keys": {
         "title": "API Keys",
         "type": "array",
