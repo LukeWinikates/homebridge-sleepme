@@ -1,5 +1,5 @@
 import {describe, expect, test, afterEach} from '@jest/globals';
-import {start, FakeServer} from '../fakeserver/server';
+import {start, FakeServer, sendDeviceResponse, handleControlRequest} from '../fakeserver/server';
 import {Client} from './client';
 
 describe('client', () => {
@@ -12,7 +12,12 @@ describe('client', () => {
   test('get device by id', async () => {
     server = start();
     const client = new Client(server.token, server.host);
-    const devices = await client.getDeviceStatus('1');
+
+    const deviceStatusRequest = client.getDeviceStatus('1');
+    await server.waitForARequest();
+    sendDeviceResponse(server.deviceGetRequests[0].res);
+
+    const devices = await deviceStatusRequest;
     expect(devices.data.about).toEqual({
       'firmware_version': '5.38.2031',
       'ip_address': '',
@@ -39,7 +44,11 @@ describe('client', () => {
   test('set temperature', async () => {
     server = start();
     const client = new Client(server.token, server.host);
-    const devices = await client.setTemperatureFahrenheit('1', 74);
+    const setTemperatureRequest = client.setTemperatureFahrenheit('1', 74);
+    await server.waitForARequest();
+    handleControlRequest(server.devicePatchRequests[0]);
+
+    const devices = await setTemperatureRequest;
     expect(devices.data).toEqual({
       brightness_level: 100,
       display_temperature_unit: 'f',
