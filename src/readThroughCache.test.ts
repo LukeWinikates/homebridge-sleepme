@@ -1,43 +1,53 @@
 import {afterEach, describe, expect, jest, test} from '@jest/globals';
-import {FakeServer, start} from './fakeserver/server';
+import {FakeServer, sendDeviceResponse, start} from './fakeserver/server';
 import {Client} from './sleepme/client';
 import ReadThroughCache from './readThroughCache';
 import {Logger} from 'homebridge/lib/logger';
 
 jest.mock('homebridge/lib/logger');
 
-describe('client', () => {
+describe('ReadThroughCache', () => {
   let server: FakeServer;
 
   afterEach(async () => {
     await server.stop();
   });
 
-  test('get deduplicates in-flight requests', async () => {
-    server = start();
-    const client = new Client(server.token, server.host);
-    const logger = new Logger();
-
-    const readThroughCache = new ReadThroughCache(client, '1', logger)
-    await Promise.all([
-      readThroughCache.get(),
-      readThroughCache.get(),
-      readThroughCache.get(),
-      readThroughCache.get()])
-
-    expect(server.requests['/v1/devices/1']).toEqual(1);
-  });
-
-  test('get re-uses recently completed requests', async () => {
+  test('deduplicates in-flight requests', async () => {
     server = start();
     const client = new Client(server.token, server.host);
     const logger = new Logger();
     const readThroughCache = new ReadThroughCache(client, '1', logger)
-    const request = readThroughCache.get()
-    await request
-    expect(server.requests['/v1/devices/1']).toEqual(1);
-    const secondRequest = readThroughCache.get();
-    await secondRequest;
+    const requests = [
+      readThroughCache.get(),
+      readThroughCache.get(),
+      readThroughCache.get(),
+      readThroughCache.get()];
+    await server.waitForARequest();
+
+    expect(server.deviceGetRequests.length).toEqual(1);
+    sendDeviceResponse(server.deviceGetRequests[0].res)
+    await Promise.all(requests)
+
     expect(server.requests['/v1/devices/1']).toEqual(1);
   });
+
+  describe('when a request was recently completed', () => {
+    test('re-uses recently completed requests', async () => {
+      server = start();
+      const client = new Client(server.token, server.host);
+      const logger = new Logger();
+      const readThroughCache = new ReadThroughCache(client, '1', logger)
+      const request = readThroughCache.get()
+      await server.waitForARequest();
+
+      sendDeviceResponse(server.deviceGetRequests[0].res)
+      await request
+      expect(server.requests['/v1/devices/1']).toEqual(1);
+
+      const secondRequest = readThroughCache.get();
+      await secondRequest;
+      expect(server.requests['/v1/devices/1']).toEqual(1);
+    });
+  })
 });
