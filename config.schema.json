@@ -19,6 +19,15 @@
           "title": "Key",
           "type": "string"
         }
+      },
+      "sleepme_api_url": {
+        "title": "Sleepme API URL",
+        "type": "string",
+        "required": true,
+        "default": "https://api.developer.sleep.me",
+        "condition": {
+          "functionBody": "return false;"
+        }
       }
     }
   }

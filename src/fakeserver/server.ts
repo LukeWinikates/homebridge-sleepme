@@ -7,8 +7,19 @@ import * as crypto from 'node:crypto';
 const devices: Device[] = [{
   attachments: [],
   name: 'Device 1',
-  id: '1',
+  id: '12345678987654321',
 }];
+
+interface RespondWith {
+  success:()=>void;
+  error429:()=>void;
+  error500:()=>void;
+}
+
+interface DeviceGetRequests {
+  length: number,
+  respondWith: RespondWith,
+}
 
 export type FakeServer = {
   host: string;
@@ -16,7 +27,7 @@ export type FakeServer = {
   waitForARequest: (count?:number) => Promise<void>;
   token: string;
   requests: Record<string, number>
-  deviceGetRequests: { req: IncomingMessage, res: ServerResponse }[]
+  deviceGetRequests: DeviceGetRequests
   devicePatchRequests: { req: IncomingMessage, res: ServerResponse }[]
 };
 
@@ -95,18 +106,19 @@ export function start(): FakeServer {
   const port = Math.floor(Math.random() * 1000) + 12000;
   const token = crypto.randomBytes(20).toString('hex');
 
-  const requests: Record<string, number> = {};
+  const requestCounts: Record<string, number> = {};
   const deviceGetRequests: { req: IncomingMessage, res: ServerResponse }[] = []
   const devicePatchRequests: { req: IncomingMessage, res: ServerResponse }[] = []
 
   const server = createServer((req, res) => {
+    if (req.url) {
+      requestCounts[req.url] = (requestCounts[req.url] ?? 0) + 1;
+    }
     if (req.headers.authorization !== `Bearer ${token}`) {
+      deviceGetRequests.push({req, res})
       res.statusCode = 403;
       res.end('unauthorized');
       return;
-    }
-    if (req.url) {
-      requests[req.url] = (requests[req.url] ?? 0) + 1;
     }
     if (req.url === '/v1/devices') {
       res.statusCode = 200;
@@ -144,8 +156,30 @@ export function start(): FakeServer {
       });
     },
     token: token,
-    requests: requests,
-    deviceGetRequests: deviceGetRequests,
+    requests: requestCounts,
+    deviceGetRequests: {
+      get length() {
+        return deviceGetRequests.length;
+      },
+      respondWith:{
+        success: () => {
+          const res = deviceGetRequests[0].res
+          res.statusCode = 200;
+          res.setHeader('Content-Type', 'application/json');
+          res.end(JSON.stringify(fakeDevice()));
+        },
+        error429:() =>{
+          const res = deviceGetRequests[0].res
+          res.statusCode = 429;
+          res.end();
+        },
+        error500:() => {
+          const res = deviceGetRequests[0].res
+          res.statusCode = 500;
+          res.end();
+        },
+      },
+    },
     devicePatchRequests: devicePatchRequests,
     waitForARequest: (count: number = 1) => {
       return new Promise((resolve) => {

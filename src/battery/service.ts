@@ -10,13 +10,16 @@ export function createBatteryService(platformAccessory: SleepmePlatformAccessory
 
   batteryService.getCharacteristic(StatusLowBattery)
     .onGet(() =>
-      readThroughCache.get().then(r => r.data)
-        .then(status => status.status.is_water_low));
+      readThroughCache.get()
+        .then(r => {
+          return r ? r.data.status.is_water_low : null;
+        }));
 
   batteryService.getCharacteristic(BatteryLevel)
     .onGet(() =>
-      readThroughCache.get().then(r => r.data)
-        .then(status => status.status.water_level))
+      readThroughCache.get().then(r => {
+        return r ? r.data.status.water_level : null;
+      }))
 
   return batteryService;
 }
