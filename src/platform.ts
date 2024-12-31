@@ -1,24 +1,44 @@
-import {API, DynamicPlatformPlugin, Logging, PlatformAccessory, Service, Characteristic} from 'homebridge';
+import {
+  API,
+  DynamicPlatformPlugin,
+  Logging,
+  PlatformAccessory,
+  Service,
+  Characteristic,
+  PlatformConfig,
+} from 'homebridge';
 
 import {Client} from './sleepme/client.js';
 
 import {PLATFORM_NAME, PLUGIN_NAME} from './settings.js';
 import {SleepmePlatformAccessory} from './platformAccessory.js';
+import axios from 'axios';
 
 export type PluginConfig = {
   api_keys: string[];
   platform: string;
+  sleepme_api_url: string;
 };
 
-const validateConfig = (config: any):[boolean, string] => {
-  if(!config.api_keys || !Array.isArray(config.api_keys)) {
-    return [false, 'No API keys configured - plugin will not start']
+const validateConfig = (config: PlatformConfig): [boolean, string] => {
+  if (!config.api_keys || !Array.isArray(config.api_keys)) {
+    return [false, 'No API keys configured - plugin will not start'];
   }
-  if (config.api_keys.some((s:unknown) => typeof s !== 'string')) {
-    return [false, 'Some API keys are invalid']
+
+  if (!config.sleepme_api_url) {
+    return [false, 'Missing SleepMe API URL - plugin will not start'];
   }
-  return [true, '']
-}
+
+  if (config.api_keys.some((s: unknown) => typeof s !== 'string')) {
+    return [false, 'Some API keys are invalid'];
+  }
+
+  if (!config as unknown as PluginConfig) {
+    return [false, 'this configuration is invalid'];
+  }
+
+  return [true, ''];
+};
 
 // When this event is fired it means Homebridge has restored all cached accessories from disk.
 // Dynamic Platform plugins should only register new accessories after this event was fired,
@@ -35,7 +55,7 @@ export class SleepmePlatform implements DynamicPlatformPlugin {
 
   constructor(
     public readonly log: Logging,
-    public readonly config: PluginConfig,
+    public readonly config: PlatformConfig,
     public readonly api: API,
   ) {
     this.Service = api.hap.Service;
@@ -43,8 +63,8 @@ export class SleepmePlatform implements DynamicPlatformPlugin {
 
     const [validConfig, message] = validateConfig(this.config);
     if (!validConfig) {
-      this.log.error(message)
-      return
+      this.log.error(message);
+      return;
     }
 
     this.log.debug('Finished initializing platform:', config.platform);
@@ -53,7 +73,9 @@ export class SleepmePlatform implements DynamicPlatformPlugin {
     }
     this.api.on(didFinishLaunching, () => {
       log.debug('Executed didFinishLaunching callback');
-      this.discoverDevices();
+      this.discoverDevices().catch(err => {
+        this.log.error(`error during device discovery (${err})`);
+      });
     });
   }
 
@@ -73,10 +95,10 @@ export class SleepmePlatform implements DynamicPlatformPlugin {
    * Accessories must only be registered once, previously created accessories
    * must not be registered again to prevent "duplicate UUID" errors.
    */
-  discoverDevices() {
-    this.config.api_keys.forEach(key => {
-      const client = new Client(key);
-      client.listDevices().then(r => {
+  discoverDevices(): Promise<void[]> {
+    return Promise.all(this.config.api_keys.map((key: string) => {
+      const client = new Client(key, this.config.sleepme_api_url);
+      return client.listDevices().then(r => {
         r.data.forEach(device => {
           const uuid = this.api.hap.uuid.generate(device.id);
           const existingAccessory = this.accessories.find(accessory => accessory.UUID === uuid);
@@ -114,7 +136,13 @@ export class SleepmePlatform implements DynamicPlatformPlugin {
             this.api.registerPlatformAccessories(PLUGIN_NAME, PLATFORM_NAME, [accessory]);
           }
         });
+      }).catch(err => {
+        if (axios.isAxiosError(err)) {
+          if (err.status === 403) {
+            this.log.error(`the token ending in ${key.substring(key.length - 4)} is invalid.`);
+          }
+        }
       });
-    });
+    }));
   }
 }

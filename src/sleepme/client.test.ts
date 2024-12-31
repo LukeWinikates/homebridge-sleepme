@@ -1,5 +1,5 @@
 import {describe, expect, test, afterEach} from '@jest/globals';
-import {start, FakeServer, sendDeviceResponse, handleControlRequest} from '../fakeserver/server';
+import {start, FakeServer, handleControlRequest} from '../fakeserver/server';
 import {Client} from './client';
 
 describe('client', () => {
@@ -15,7 +15,7 @@ describe('client', () => {
 
     const deviceStatusRequest = client.getDeviceStatus('1');
     await server.waitForARequest();
-    sendDeviceResponse(server.deviceGetRequests[0].res);
+    server.deviceGetRequests.respondWith.success();
 
     const devices = await deviceStatusRequest;
     expect(devices.data.about).toEqual({
@@ -36,7 +36,7 @@ describe('client', () => {
     expect(devices.data).toEqual([{
       attachments: [],
       name: 'Device 1',
-      id: '1',
+      id: '12345678987654321',
     }]);
   });
 

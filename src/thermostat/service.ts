@@ -17,27 +17,37 @@ export function createThermostatService(
 
   thermostatService.getCharacteristic(Characteristic.CurrentHeatingCoolingState)
     .onGet(() => readThroughCache.get()
-      .then(response => thermostatMapper.toCurrentHeatingCoolingState(response.data)));
+      .then(response => {
+        return response ? thermostatMapper.toCurrentHeatingCoolingState(response.data) : null;
+      }));
 
   const {AUTO, OFF} = Characteristic.TargetHeatingCoolingState
   thermostatService.getCharacteristic(Characteristic.TargetHeatingCoolingState)
     .setProps({validValues: [OFF, AUTO]})
     .onGet(() => readThroughCache.get()
-      .then(response => thermostatMapper.toTargetHeatingCoolingState(response.data)))
+      .then(response => {
+        return response ? thermostatMapper.toTargetHeatingCoolingState(response.data) : null;
+      }))
     .onSet(setters.setTargetState);
 
   thermostatService.getCharacteristic(Characteristic.CurrentTemperature)
     .onGet(() => readThroughCache.get()
-      .then(response => response.data.status.water_temperature_c))
+      .then(response => {
+        return response ? response.data.status.water_temperature_c : null;
+      }))
 
   thermostatService.getCharacteristic(Characteristic.TargetTemperature)
     .onGet(() => readThroughCache.get()
-      .then(response => response.data.control.set_temperature_c))
+      .then(response => {
+        return response ? response.data.control.set_temperature_c : null;
+      }))
     .onSet(setters.setTargetTemp);
 
   thermostatService.getCharacteristic(Characteristic.TemperatureDisplayUnits)
     .onGet(() => readThroughCache.get()
-      .then(response => thermostatMapper.toTemperatureDisplayUnits(response.data)));
+      .then(response => {
+        return response ? thermostatMapper.toTemperatureDisplayUnits(response.data) : null;
+      }));
 
   return thermostatService;
 }

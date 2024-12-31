@@ -1,5 +1,5 @@
 import {afterEach, describe, expect, jest, test} from '@jest/globals';
-import {FakeServer, sendDeviceResponse, start} from './fakeserver/server';
+import {FakeServer, start} from './fakeserver/server';
 import {Client} from './sleepme/client';
 import ReadThroughCache from './readThroughCache';
 import {Logger} from 'homebridge/lib/logger';
@@ -17,7 +17,7 @@ describe('ReadThroughCache', () => {
     server = start();
     const client = new Client(server.token, server.host);
     const logger = new Logger();
-    const readThroughCache = new ReadThroughCache(client, '1', logger)
+    const readThroughCache = new ReadThroughCache(client, '1', logger);
     const requests = [
       readThroughCache.get(),
       readThroughCache.get(),
@@ -26,8 +26,8 @@ describe('ReadThroughCache', () => {
     await server.waitForARequest();
 
     expect(server.deviceGetRequests.length).toEqual(1);
-    sendDeviceResponse(server.deviceGetRequests[0].res)
-    await Promise.all(requests)
+    server.deviceGetRequests.respondWith.success();
+    await Promise.all(requests);
 
     expect(server.requests['/v1/devices/1']).toEqual(1);
   });
@@ -37,17 +37,60 @@ describe('ReadThroughCache', () => {
       server = start();
       const client = new Client(server.token, server.host);
       const logger = new Logger();
-      const readThroughCache = new ReadThroughCache(client, '1', logger)
-      const request = readThroughCache.get()
+      const readThroughCache = new ReadThroughCache(client, '1', logger);
+      const request = readThroughCache.get();
       await server.waitForARequest();
 
-      sendDeviceResponse(server.deviceGetRequests[0].res)
-      await request
+      server.deviceGetRequests.respondWith.success();
+      await request;
       expect(server.requests['/v1/devices/1']).toEqual(1);
 
       const secondRequest = readThroughCache.get();
       await secondRequest;
       expect(server.requests['/v1/devices/1']).toEqual(1);
     });
-  })
+  });
+
+  describe('when the server returns 429', () => {
+    test('does not crash', async () => {
+      server = start();
+      const client = new Client(server.token, server.host);
+      const logger = new Logger();
+      const readThroughCache = new ReadThroughCache(client, '1', logger);
+      const request = readThroughCache.get();
+      await server.waitForARequest();
+
+      server.deviceGetRequests.respondWith.error429();
+      await expect(request).resolves.toBe(null);
+      expect(server.requests['/v1/devices/1']).toEqual(1);
+    });
+  });
+
+  describe('when the server returns 500', () => {
+    test('does not crash', async () => {
+      server = start();
+      const client = new Client(server.token, server.host);
+      const logger = new Logger();
+      const readThroughCache = new ReadThroughCache(client, '1', logger);
+      const request = readThroughCache.get();
+      await server.waitForARequest();
+
+      server.deviceGetRequests.respondWith.error500();
+      await expect(request).resolves.toBe(null);
+      expect(server.requests['/v1/devices/1']).toEqual(1);
+    });
+  });
+
+  describe('when the token is invalid', () => {
+    test('does not crash', async () => {
+      server = start();
+      const client = new Client('abc', server.host);
+      const logger = new Logger();
+      const readThroughCache = new ReadThroughCache(client, '1', logger);
+      const request = readThroughCache.get();
+
+      await expect(request).resolves.toBe(null);
+      expect(server.requests['/v1/devices/1']).toEqual(1);
+    });
+  });
 });
