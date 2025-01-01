@@ -7,9 +7,10 @@
     "type": "object",
     "properties": {
       "name": {
-        "title": "Homebridge Sleepme",
+        "title": "Name",
         "type": "string",
-        "required": true
+        "required": true,
+        "default": "Homebridge Sleepme"
       },
       "api_keys": {
         "title": "API Keys",
