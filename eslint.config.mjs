@@ -36,8 +36,7 @@ export default [{
             SwitchCase: 1,
         }],
         '@stylistic/eol-last': ['error'],
-
-        semi: ["off"],
+        '@stylistic/semi': ['error'],
         "comma-dangle": ["warn", "always-multiline"],
         "dot-notation": "off",
         eqeqeq: "warn",

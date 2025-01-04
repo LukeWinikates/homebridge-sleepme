@@ -107,15 +107,15 @@ export function start(): FakeServer {
   const token = crypto.randomBytes(20).toString('hex');
 
   const requestCounts: Record<string, number> = {};
-  const deviceGetRequests: { req: IncomingMessage, res: ServerResponse }[] = []
-  const devicePatchRequests: { req: IncomingMessage, res: ServerResponse }[] = []
+  const deviceGetRequests: { req: IncomingMessage, res: ServerResponse }[] = [];
+  const devicePatchRequests: { req: IncomingMessage, res: ServerResponse }[] = [];
 
   const server = createServer((req, res) => {
     if (req.url) {
       requestCounts[req.url] = (requestCounts[req.url] ?? 0) + 1;
     }
     if (req.headers.authorization !== `Bearer ${token}`) {
-      deviceGetRequests.push({req, res})
+      deviceGetRequests.push({req, res});
       res.statusCode = 403;
       res.end('unauthorized');
       return;
@@ -128,11 +128,11 @@ export function start(): FakeServer {
     }
     if (req.url?.startsWith('/v1/devices')) {
       if (req.method === 'GET') {
-        deviceGetRequests.push({req, res})
+        deviceGetRequests.push({req, res});
         return;
       }
       if (req.method === 'PATCH') {
-        devicePatchRequests.push({req, res})
+        devicePatchRequests.push({req, res});
         return;
       }
     }
@@ -163,18 +163,18 @@ export function start(): FakeServer {
       },
       respondWith:{
         success: () => {
-          const res = deviceGetRequests[0].res
+          const res = deviceGetRequests[0].res;
           res.statusCode = 200;
           res.setHeader('Content-Type', 'application/json');
           res.end(JSON.stringify(fakeDevice()));
         },
         error429:() =>{
-          const res = deviceGetRequests[0].res
+          const res = deviceGetRequests[0].res;
           res.statusCode = 429;
           res.end();
         },
         error500:() => {
-          const res = deviceGetRequests[0].res
+          const res = deviceGetRequests[0].res;
           res.statusCode = 500;
           res.end();
         },
@@ -185,7 +185,7 @@ export function start(): FakeServer {
       return new Promise((resolve) => {
         const timeout = setInterval(() => {
           if (deviceGetRequests.length + devicePatchRequests.length >= count) {
-            clearTimeout(timeout)
+            clearTimeout(timeout);
             resolve();
           }
         }, 10);

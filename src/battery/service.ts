@@ -19,7 +19,7 @@ export function createBatteryService(platformAccessory: SleepmePlatformAccessory
     .onGet(() =>
       readThroughCache.get().then(r => {
         return r ? r.data.status.water_level : null;
-      }))
+      }));
 
   return batteryService;
 }

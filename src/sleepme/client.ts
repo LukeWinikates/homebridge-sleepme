@@ -7,7 +7,7 @@ export type ClientResponse<T> = {
 
 export class Client {
   readonly token: string;
-  private readonly axiosClient: AxiosInstance
+  private readonly axiosClient: AxiosInstance;
 
   constructor(token: string, baseURL = 'https://api.developer.sleep.me') {
     this.token = token;
