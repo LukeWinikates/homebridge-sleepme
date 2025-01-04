@@ -13,18 +13,18 @@ export function newSetters(sleepmePlatformAccessory: SleepmePlatformAccessory, c
   return {
     setTargetState: (value: CharacteristicValue) => {
       const targetState = (value === 0) ? 'standby' : 'active';
-      platform.log(`setting TargetHeatingCoolingState for ${id} to ${targetState} (${value})`)
+      platform.log(`setting TargetHeatingCoolingState for ${id} to ${targetState} (${value})`);
       return client.setThermalControlStatus(id, targetState).then(r => {
-        platform.log(`response (${accessory.displayName}): ${r.status}`)
+        platform.log(`response (${accessory.displayName}): ${r.status}`);
       });
     },
     setTargetTemp: (value: CharacteristicValue) => {
       const tempF = Math.floor((value as number * (9 / 5)) + 32);
-      platform.log(`setting TargetTemperature for ${accessory.displayName} to ${tempF} (${value})`)
+      platform.log(`setting TargetTemperature for ${accessory.displayName} to ${tempF} (${value})`);
       return client.setTemperatureFahrenheit(id, tempF)
         .then(r => {
-          platform.log(`response (${accessory.displayName}): ${r.status}`)
+          platform.log(`response (${accessory.displayName}): ${r.status}`);
         });
     },
-  }
+  };
 }

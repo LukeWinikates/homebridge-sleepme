@@ -13,7 +13,7 @@ export function createThermostatService(
   const thermostatMapper = NewMapper(platform);
   const thermostatService = accessory.getService(platform.Service.Thermostat) ||
     accessory.addService(platform.Service.Thermostat, `${accessory.displayName} - Dock Pro`);
-  const setters = newSetters(platformAccessory, readThroughCache.client, deviceId)
+  const setters = newSetters(platformAccessory, readThroughCache.client, deviceId);
 
   thermostatService.getCharacteristic(Characteristic.CurrentHeatingCoolingState)
     .onGet(() => readThroughCache.get()
@@ -21,7 +21,7 @@ export function createThermostatService(
         return response ? thermostatMapper.toCurrentHeatingCoolingState(response.data) : null;
       }));
 
-  const {AUTO, OFF} = Characteristic.TargetHeatingCoolingState
+  const {AUTO, OFF} = Characteristic.TargetHeatingCoolingState;
   thermostatService.getCharacteristic(Characteristic.TargetHeatingCoolingState)
     .setProps({validValues: [OFF, AUTO]})
     .onGet(() => readThroughCache.get()
@@ -34,7 +34,7 @@ export function createThermostatService(
     .onGet(() => readThroughCache.get()
       .then(response => {
         return response ? response.data.status.water_temperature_c : null;
-      }))
+      }));
 
   thermostatService.getCharacteristic(Characteristic.TargetTemperature)
     .onGet(() => readThroughCache.get()
