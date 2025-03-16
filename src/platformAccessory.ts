@@ -1,3 +1,4 @@
+// filename: src/platformAccessory.ts
 import {CharacteristicValue, PlatformAccessory, Service} from 'homebridge';
 
 import {SleepmePlatform} from './platform.js';
@@ -76,19 +77,20 @@ export class SleepmePlatformAccessory {
   private readonly waterLevelType: 'battery' | 'leak' | 'motion';
   private readonly slowPollingIntervalMs: number;
   private previousHeatingCoolingState: number | null = null;
+  private isStartup = true; // Add a flag to track initial startup
 
   constructor(
     private readonly platform: SleepmePlatform,
     private readonly accessory: PlatformAccessory,
   ) {
-	const pastTime = new Date();
+    // Set lastInteractionTime to 2 hours in the past to ensure slow polling on startup
+    const pastTime = new Date();
     pastTime.setHours(pastTime.getHours() - 2);
     this.lastInteractionTime = pastTime;
-    this.platform.log.debug(`Initialized ${this.accessory.displayName} with lastInteractionTime set to ${this.lastInteractionTime} to ensure slow polling on startup`);
-	this.lastInteractionTime = new Date();
+    
     const {Characteristic, Service} = this.platform;
     const {apiKey, device} = this.accessory.context as SleepmeContext;
-    const client = new Client(apiKey, undefined, this.platform.log);
+    const client = new Client(apiKey);
     this.deviceStatus = null;
 
     // Get configuration
@@ -110,7 +112,9 @@ export class SleepmePlatformAccessory {
       this.platform.log.debug(`Using default slow polling interval of ${DEFAULT_SLOW_POLLING_INTERVAL_MINUTES} minutes`);
     }
 
-    // Debug log the configuration
+    // Debug log the startup state and configuration
+    this.platform.log.debug(`Initializing ${this.accessory.displayName} with forced slow polling on startup`);
+    this.platform.log.debug(`Initial lastInteractionTime set to ${this.lastInteractionTime}`);
     this.platform.log.debug('Configuration:', JSON.stringify(config));
     this.platform.log.debug(`Water level type configured as: ${this.waterLevelType}`);
 
@@ -187,11 +191,11 @@ export class SleepmePlatformAccessory {
         this.publishUpdates();
       });
 
-    // Set up polling
+    // Set up polling with forced slow mode on startup
     this.scheduleNextCheck(async () => {
-      this.platform.log(`polling device status for ${this.accessory.displayName}`)
+      this.platform.log.debug(`Polling device status for ${this.accessory.displayName}`)
       const r = await client.getDeviceStatus(device.id);
-      this.platform.log(`response (${this.accessory.displayName}): ${r.status}`)
+      this.platform.log.debug(`Response (${this.accessory.displayName}): ${r.status}`)
       return r.data
     });
   }
@@ -309,13 +313,19 @@ export class SleepmePlatformAccessory {
         .orElse(1));
   }
 
-// filename: src/platformAccessory.ts
-private scheduleNextCheck(poller: () => Promise<DeviceStatus>) {
+  private scheduleNextCheck(poller: () => Promise<DeviceStatus>) {
+    // Force slow polling on the first call (startup)
+    const useSlowPollingOnStartup = this.isStartup;
+    if (this.isStartup) {
+      this.isStartup = false; // Clear the startup flag after first use
+      this.platform.log.debug(`${this.accessory.displayName}: Initial poll - FORCING slow polling mode`);
+    }
+    
     const timeSinceLastInteractionMS = new Date().valueOf() - this.lastInteractionTime.valueOf();
-    const usesFastPolling = timeSinceLastInteractionMS < POLLING_RECENCY_THRESHOLD_MS;
+    const usesFastPolling = !useSlowPollingOnStartup && (timeSinceLastInteractionMS < POLLING_RECENCY_THRESHOLD_MS);
     const pollingInterval = usesFastPolling ? FAST_POLLING_INTERVAL_MS : this.slowPollingIntervalMs;
     
-    this.platform.log.debug(`${this.accessory.displayName}: Scheduling next poll in ${pollingInterval/1000}s (${usesFastPolling ? 'fast' : 'slow'} polling mode)`);
+    this.platform.log.debug(`${this.accessory.displayName}: Scheduling next poll in ${pollingInterval/1000}s (${usesFastPolling ? 'FAST' : 'SLOW'} polling mode)`);
     this.platform.log.debug(`${this.accessory.displayName}: Last interaction was ${timeSinceLastInteractionMS/1000}s ago at ${this.lastInteractionTime}`);
     
     clearTimeout(this.timeout);
