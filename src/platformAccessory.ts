@@ -250,19 +250,36 @@ export class SleepmePlatformAccessory {
           Characteristic.TargetHeatingCoolingState.OFF : 
           Characteristic.TargetHeatingCoolingState.AUTO)
         .orElse(Characteristic.TargetHeatingCoolingState.OFF))
-      .onSet(async (value: CharacteristicValue) => {
+		.onSet(async (value: CharacteristicValue) => {
         const targetState = (value === Characteristic.TargetHeatingCoolingState.OFF) ? 'standby' : 'active';
-        this.platform.log(`setting TargetHeatingCoolingState for ${this.accessory.displayName} to ${targetState} (${value})`);
+        this.platform.log(`${this.accessory.displayName}: setting TargetHeatingCoolingState to ${targetState} (${value})`);
         
-        try {
-          const r = await client.setThermalControlStatus(device.id, targetState);
-          this.platform.log(`response (${this.accessory.displayName}): ${r.status}`);
-          this.updateControlFromResponse(r);
-        } catch (error) {
-          this.platform.log.error(`Failed to set thermal control state: ${error instanceof Error ? error.message : String(error)}`);
-          // Re-throw a specific HomeKit error to indicate the operation failed
-          throw new this.platform.api.hap.HapStatusError(this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE);
+        // Optimistically update the local state first for immediate HomeKit feedback
+        if (this.deviceStatus) {
+          this.deviceStatus.control.thermal_control_status = targetState;
+          // Trigger UI update without waiting for API
+          this.publishUpdates();
         }
+        
+        // Then actually send the command to the API (don't await here)
+        client.setThermalControlStatus(device.id, targetState)
+          .then(r => {
+            this.platform.log(`${this.accessory.displayName}: API response: ${r.status}`);
+            // Update with the actual API response (which may revert our optimistic update)
+            this.updateControlFromResponse(r);
+          })
+          .catch(error => {
+            this.platform.log.error(`${this.accessory.displayName}: Failed to set thermal control state: ${error instanceof Error ? error.message : String(error)}`);
+            // If the API fails, revert our optimistic update by getting the actual device status
+            return client.getDeviceStatus(device.id)
+              .then(statusResponse => {
+                this.deviceStatus = statusResponse.data;
+                this.publishUpdates();
+              })
+              .catch(refreshError => {
+                this.platform.log.error(`${this.accessory.displayName}: Failed to refresh status after error: ${refreshError instanceof Error ? refreshError.message : String(refreshError)}`);
+              });
+          });
       });
 
     this.thermostatService.getCharacteristic(Characteristic.CurrentTemperature)
@@ -290,35 +307,60 @@ export class SleepmePlatformAccessory {
           return tempC;
         })
         .orElse(21))
-      .onSet(async (value: CharacteristicValue) => {
+		.onSet(async (value: CharacteristicValue) => {
         const tempC = value as number;
         let tempF = (tempC * (9 / 5)) + 32;
         
         // Round to nearest whole number for API call
         tempF = Math.round(tempF);
         
-        try {
-          // Map temperatures over threshold to HIGH_TEMP_TARGET_F
-          // and under threshold to LOW_TEMP_TARGET_F
+        // Optimistically update the local state first for immediate HomeKit feedback
+        if (this.deviceStatus) {
+          // Update the local temperature values
+          this.deviceStatus.control.set_temperature_c = tempC;
+          this.deviceStatus.control.set_temperature_f = tempF;
+          
+          // Handle special temperature cases
           if (tempF > HIGH_TEMP_THRESHOLD_F) {
             this.platform.log(`${this.accessory.displayName}: Temperature over ${HIGH_TEMP_THRESHOLD_F}F, mapping to ${HIGH_TEMP_TARGET_F}F for API call`);
-            await client.setTemperatureFahrenheit(device.id, HIGH_TEMP_TARGET_F);
+            tempF = HIGH_TEMP_TARGET_F;
           } else if (tempF < LOW_TEMP_THRESHOLD_F) {
             this.platform.log(`${this.accessory.displayName}: Temperature under ${LOW_TEMP_THRESHOLD_F}F, mapping to ${LOW_TEMP_TARGET_F}F for API call`);
-            await client.setTemperatureFahrenheit(device.id, LOW_TEMP_TARGET_F);
+            tempF = LOW_TEMP_TARGET_F;
           } else {
             this.platform.log(`${this.accessory.displayName}: Setting temperature to: ${tempC}°C (${tempF}°F)`);
-            await client.setTemperatureFahrenheit(device.id, tempF);
           }
           
-          const r = await client.getDeviceStatus(device.id);
-          this.deviceStatus = r.data;  // Update full device status
+          // Trigger UI update without waiting for API
           this.publishUpdates();
-        } catch (error) {
-          this.platform.log.error(`Failed to set temperature: ${error instanceof Error ? error.message : String(error)}`);
-          // Re-throw a specific HomeKit error to indicate the operation failed
-          throw new this.platform.api.hap.HapStatusError(this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE);
         }
+        
+        // Send the command to the API (don't await here)
+        const apiPromise = (tempF === HIGH_TEMP_TARGET_F || tempF === LOW_TEMP_TARGET_F) 
+          ? client.setTemperatureFahrenheit(device.id, tempF)
+          : client.setTemperatureFahrenheit(device.id, tempF);
+          
+        apiPromise.then(() => {
+          // Get the full updated status after successful temperature change
+          return client.getDeviceStatus(device.id);
+        })
+        .then(statusResponse => {
+          this.deviceStatus = statusResponse.data;
+          this.publishUpdates();
+          this.platform.log(`${this.accessory.displayName}: Successfully updated temperature from API`);
+        })
+        .catch(error => {
+          this.platform.log.error(`${this.accessory.displayName}: Failed to set temperature: ${error instanceof Error ? error.message : String(error)}`);
+          // If the API fails, revert our optimistic update by getting the actual device status
+          return client.getDeviceStatus(device.id)
+            .then(statusResponse => {
+              this.deviceStatus = statusResponse.data;
+              this.publishUpdates();
+            })
+            .catch(refreshError => {
+              this.platform.log.error(`${this.accessory.displayName}: Failed to refresh status after error: ${refreshError instanceof Error ? refreshError.message : String(refreshError)}`);
+            });
+        });
       });
 
     this.thermostatService.getCharacteristic(Characteristic.TemperatureDisplayUnits)
