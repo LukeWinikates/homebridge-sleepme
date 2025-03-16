@@ -30,7 +30,7 @@ export class Client {
     }
   }
 
-  private handleError(error: unknown, method: string, endpoint: string): never {
+private handleError(error: unknown, method: string, endpoint: string): never {
     if (axios.isAxiosError(error)) {
       const axiosError = error as AxiosError;
       const status = axiosError.response?.status;
@@ -57,9 +57,9 @@ export class Client {
       }
       
       // Create an error with the status code for special handling of rate limits
-      const error = new Error(`API error ${status}: ${statusText}`);
-      (error as any).statusCode = status; // Add the status code to the error object for 429 detection
-      throw error;
+      const customError = new Error(`API error ${status}: ${statusText}`);
+      (customError as any).statusCode = status; // Add the status code to the error object for 429 detection
+      throw customError;
     } else {
       // For non-axios errors
       const errorMessage = error instanceof Error ? error.message : String(error);
