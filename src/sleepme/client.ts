@@ -1,4 +1,4 @@
-import axios, {AxiosInstance} from 'axios';
+import axios, {AxiosInstance, AxiosResponse} from 'axios';
 import {Logging} from 'homebridge';
 
 type ClientResponse<T> = {
@@ -75,6 +75,7 @@ export class Client {
     this.logResponse(response, 'PATCH', endpoint);
     return response;
   }
+}
 
 export type Device = {
   id: string;
@@ -109,4 +110,3 @@ export type DeviceStatus = {
     water_temperature_c: number;
   };
 };
-
