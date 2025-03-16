@@ -75,7 +75,7 @@ export class SleepmePlatform implements DynamicPlatformPlugin {
    */
   discoverDevices() {
     this.config.api_keys.forEach(key => {
-      const client = new Client(key);
+      const client = new Client(key, undefined, this.log);
       client.listDevices().then(r => {
         r.data.forEach(device => {
           const uuid = this.api.hap.uuid.generate(device.id);

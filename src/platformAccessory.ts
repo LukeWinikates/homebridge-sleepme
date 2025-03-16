@@ -81,10 +81,10 @@ export class SleepmePlatformAccessory {
     private readonly platform: SleepmePlatform,
     private readonly accessory: PlatformAccessory,
   ) {
-    this.lastInteractionTime = new Date();
+	this.lastInteractionTime = new Date();
     const {Characteristic, Service} = this.platform;
     const {apiKey, device} = this.accessory.context as SleepmeContext;
-    const client = new Client(apiKey);
+    const client = new Client(apiKey, undefined, this.platform.log);
     this.deviceStatus = null;
 
     // Get configuration

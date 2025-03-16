@@ -1,4 +1,5 @@
 import axios, {AxiosInstance} from 'axios';
+import {Logging} from 'homebridge';
 
 type ClientResponse<T> = {
   data: T;
@@ -8,10 +9,12 @@ type ClientResponse<T> = {
 export class Client {
   readonly token: string;
   private readonly axiosClient: AxiosInstance
+  private readonly log?: Logging;
 
-  constructor(token: string, baseURL = 'https://api.developer.sleep.me') {
+  constructor(token: string, baseURL = 'https://api.developer.sleep.me', log?: Logging) {
     this.token = token;
     this.axiosClient = axios.create({baseURL: baseURL});
+    this.log = log;
   }
 
   headers(): object {
@@ -20,31 +23,58 @@ export class Client {
     };
   }
 
-  listDevices(): Promise<ClientResponse<Device[]>> {
-    return this.axiosClient.get<Device[]>('/v1/devices',
-      {headers: this.headers()});
+  private logResponse<T>(response: AxiosResponse<T>, method: string, endpoint: string): void {
+    if (this.log) {
+      this.log.debug(`API ${method} ${endpoint} - Response Code: ${response.status}`);
+    }
+  }
+  
+  async listDevices(): Promise<ClientResponse<Device[]>> {
+    const endpoint = '/v1/devices';
+    const response = await this.axiosClient.get<Device[]>(endpoint, {headers: this.headers()});
+    this.logResponse(response, 'GET', endpoint);
+    return response;
   }
 
-  getDeviceStatus(id: string): Promise<ClientResponse<DeviceStatus>> {
-    return this.axiosClient.get<DeviceStatus>('/v1/devices/' + id,
-      {headers: this.headers()});
+  async getDeviceStatus(id: string): Promise<ClientResponse<DeviceStatus>> {
+    const endpoint = `/v1/devices/${id}`;
+    const response = await this.axiosClient.get<DeviceStatus>(endpoint, {headers: this.headers()});
+    this.logResponse(response, 'GET', endpoint);
+    return response;
   }
 
-  setTemperatureFahrenheit(id: string, temperature: number): Promise<ClientResponse<Control>> {
-    return this.axiosClient.patch<Control>('/v1/devices/' + id, {set_temperature_f: temperature},
-      {headers: this.headers()});
+  async setTemperatureFahrenheit(id: string, temperature: number): Promise<ClientResponse<Control>> {
+    const endpoint = `/v1/devices/${id}`;
+    const response = await this.axiosClient.patch<Control>(
+      endpoint, 
+      {set_temperature_f: temperature},
+      {headers: this.headers()}
+    );
+    this.logResponse(response, 'PATCH', endpoint);
+    return response;
   }
 
-  setTemperatureCelsius(id: string, temperature: number): Promise<ClientResponse<Control>> {
-    return this.axiosClient.patch<Control>('/v1/devices/' + id, {set_temperature_c: temperature},
-      {headers: this.headers()});
+  async setTemperatureCelsius(id: string, temperature: number): Promise<ClientResponse<Control>> {
+    const endpoint = `/v1/devices/${id}`;
+    const response = await this.axiosClient.patch<Control>(
+      endpoint, 
+      {set_temperature_c: temperature},
+      {headers: this.headers()}
+    );
+    this.logResponse(response, 'PATCH', endpoint);
+    return response;
   }
 
-  setThermalControlStatus(id: string, targetState: 'standby' | 'active'): Promise<ClientResponse<Control>> {
-    return this.axiosClient.patch<Control>('/v1/devices/' + id, {thermal_control_status: targetState},
-      {headers: this.headers()});
+  async setThermalControlStatus(id: string, targetState: 'standby' | 'active'): Promise<ClientResponse<Control>> {
+    const endpoint = `/v1/devices/${id}`;
+    const response = await this.axiosClient.patch<Control>(
+      endpoint, 
+      {thermal_control_status: targetState},
+      {headers: this.headers()}
+    );
+    this.logResponse(response, 'PATCH', endpoint);
+    return response;
   }
-}
 
 export type Device = {
   id: string;
