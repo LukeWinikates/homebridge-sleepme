@@ -69,6 +69,8 @@ const LOW_TEMP_THRESHOLD_F = 55;
 const LOW_TEMP_TARGET_F = -1;
 const INITIAL_RETRY_DELAY_MS = 15000; // 15 seconds for first retry
 const MAX_RETRIES = 3; // Maximum number of retry attempts
+const STATE_MISMATCH_RETRY_DELAY_MS = 5000; // 5 seconds between state mismatch retries
+const MAX_STATE_MISMATCH_RETRIES = 3; // Maximum retries for state mismatches
 
 export class SleepmePlatformAccessory {
   private thermostatService: Service;
@@ -80,6 +82,7 @@ export class SleepmePlatformAccessory {
   private readonly slowPollingIntervalMs: number;
   private previousHeatingCoolingState: number | null = null;
   private isStartup = true; // Add a flag to track initial startup
+  private expectedThermalState: 'standby' | 'active' | null = null; // Track expected state
 
   constructor(
     private readonly platform: SleepmePlatform,
@@ -247,6 +250,48 @@ export class SleepmePlatformAccessory {
     });
   }
 
+  // Helper method to handle thermal state mismatches
+  private handleStateMismatch(
+    client: Client, 
+    device: Device, 
+    expectedState: 'standby' | 'active', 
+    actualState: 'standby' | 'active',
+    retryCount: number = 0
+  ): Promise<Control> {
+    if (retryCount >= MAX_STATE_MISMATCH_RETRIES) {
+      this.platform.log.warn(`${this.accessory.displayName}: State mismatch persisted after ${MAX_STATE_MISMATCH_RETRIES} retries. API returned ${actualState}, expected ${expectedState}. Accepting API state.`);
+      // Reset the expected state since we're accepting the API state
+      this.expectedThermalState = null;
+      // Return the control with the actual state
+      return Promise.resolve({ 
+        ...this.deviceStatus!.control,
+        thermal_control_status: actualState
+      } as Control);
+    }
+
+    this.platform.log.warn(`${this.accessory.displayName}: State mismatch detected! API returned ${actualState}, expected ${expectedState}. Retrying (${retryCount + 1}/${MAX_STATE_MISMATCH_RETRIES})`);
+
+    // Wait and retry setting the state
+    return new Promise(resolve => setTimeout(resolve, STATE_MISMATCH_RETRY_DELAY_MS))
+      .then(() => client.setThermalControlStatus(device.id, expectedState))
+      .then(r => {
+        const responseState = r.data.thermal_control_status;
+        if (responseState === expectedState) {
+          this.platform.log.info(`${this.accessory.displayName}: Successfully set state to ${expectedState} after retry`);
+          this.expectedThermalState = null; // Reset expected state now that it matches
+          return r.data;
+        } else {
+          // Still mismatched, retry again
+          return this.handleStateMismatch(client, device, expectedState, responseState, retryCount + 1);
+        }
+      });
+  }
+
+  // Helper method to clamp temperature values to valid range for HomeKit
+  private clampTemperature(value: number, min: number, max: number): number {
+    return Math.max(min, Math.min(max, value));
+  }
+
   private initializeCharacteristics(client: Client, device: Device) {
     const {Characteristic} = this.platform;
 
@@ -297,6 +342,9 @@ export class SleepmePlatformAccessory {
         const targetState = (value === Characteristic.TargetHeatingCoolingState.OFF) ? 'standby' : 'active';
         this.platform.log(`${this.accessory.displayName}: HomeKit state changed to ${targetState}`);
         
+        // Store the expected state
+        this.expectedThermalState = targetState;
+        
         // Optimistically update the local state first for immediate HomeKit feedback
         if (this.deviceStatus) {
           this.deviceStatus.control.thermal_control_status = targetState;
@@ -313,9 +361,20 @@ export class SleepmePlatformAccessory {
           "set thermal control status"
         )
         .then(r => {
-          //this.platform.log(`${this.accessory.displayName}: API response: ${r.status}`);
-          // Update with the actual API response
-          this.updateControlFromResponse(r);
+          const responseState = r.data.thermal_control_status;
+          
+          // Check if the response state matches the expected state
+          if (responseState !== targetState && this.expectedThermalState === targetState) {
+            // State mismatch detected - handle it with multiple retries
+            return this.handleStateMismatch(client, device, targetState, responseState);
+          } else {
+            this.expectedThermalState = null; // Reset expected state since it matches
+            return r.data;
+          }
+        })
+        .then(controlData => {
+          // Only update based on API response if the state was successfully set
+          this.updateControlFromResponse({ data: controlData });
         })
         .catch(error => {
           this.platform.log.error(`${this.accessory.displayName}: Failed to set thermal control state after retries: ${error instanceof Error ? error.message : String(error)}`);
@@ -323,6 +382,7 @@ export class SleepmePlatformAccessory {
           return client.getDeviceStatus(device.id)
             .then(statusResponse => {
               this.deviceStatus = statusResponse.data;
+              this.expectedThermalState = null; // Clear the expected state
               this.publishUpdates();
             })
             .catch(refreshError => {
@@ -333,7 +393,7 @@ export class SleepmePlatformAccessory {
 
     this.thermostatService.getCharacteristic(Characteristic.CurrentTemperature)
       .onGet(() => new Option(this.deviceStatus)
-        .map(ds => ds.status.water_temperature_c)
+        .map(ds => this.clampTemperature(ds.status.water_temperature_c, 12, 46.7))
         .orElse(21));
 
     this.thermostatService.getCharacteristic(Characteristic.TargetTemperature)
@@ -351,9 +411,8 @@ export class SleepmePlatformAccessory {
             return 12.2; // 54°F in Celsius
           }
           const tempC = ds.control.set_temperature_c;
-          const tempF = (tempC * (9/5)) + 32;
-          //this.platform.log(`${this.accessory.displayName}: Target temperature: ${tempC}°C (${tempF.toFixed(1)}°F)`);
-          return tempC;
+          // Ensure the reported temperature is within the valid range
+          return this.clampTemperature(tempC, 12, 46.7);
         })
         .orElse(21))
       .onSet(async (value: CharacteristicValue) => {
@@ -452,6 +511,22 @@ export class SleepmePlatformAccessory {
       )
       .then(s => {
         this.deviceStatus = s;
+        
+        // Check if we're waiting for a specific thermal state
+        if (this.expectedThermalState !== null && s.control.thermal_control_status !== this.expectedThermalState) {
+          this.platform.log.warn(`${this.accessory.displayName}: Device state (${s.control.thermal_control_status}) does not match expected state (${this.expectedThermalState}) during polling`);
+          // Don't update HomeKit with the mismatched state - we'll keep the optimistic state
+          // But do update everything else
+          const savedState = this.expectedThermalState;
+          if (this.deviceStatus) {
+            this.deviceStatus.control.thermal_control_status = savedState;
+          }
+        } else if (this.expectedThermalState !== null && s.control.thermal_control_status === this.expectedThermalState) {
+          // State now matches what we expected - we can clear the expected state flag
+          this.platform.log.info(`${this.accessory.displayName}: Device state now matches expected state (${this.expectedThermalState})`);
+          this.expectedThermalState = null;
+        }
+        
         this.publishUpdates();
         this.platform.log.debug(`${this.accessory.displayName}: Current thermal control status: ${s.control.thermal_control_status}`);
       })
@@ -468,6 +543,16 @@ export class SleepmePlatformAccessory {
 
   private updateControlFromResponse(response: { data: Control }) {
     if (this.deviceStatus) {
+      // Check if the response state matches the expected state (if we have one)
+      if (this.expectedThermalState !== null && response.data.thermal_control_status !== this.expectedThermalState) {
+        this.platform.log.warn(`${this.accessory.displayName}: API returned ${response.data.thermal_control_status}, but expected ${this.expectedThermalState}. Not updating HomeKit.`);
+        // Don't update with the mismatched state
+        return;
+      }
+      
+      // Clear any expected state since the response matches (or we didn't have an expectation)
+      this.expectedThermalState = null;
+      
       this.deviceStatus.control = response.data;
       this.platform.log(`${this.accessory.displayName}: API confirmed state: ${response.data.thermal_control_status.toUpperCase()}`);
     }
@@ -516,7 +601,10 @@ export class SleepmePlatformAccessory {
     // Get current water temperature in both units
     const currentTempC = s.status.water_temperature_c;
     const currentTempF = (currentTempC * (9/5)) + 32;
-    this.thermostatService.updateCharacteristic(Characteristic.CurrentTemperature, currentTempC);
+    
+    // Ensure temperature is within valid range for HomeKit
+    const safeCurrentTempC = this.clampTemperature(currentTempC, 12, 46.7);
+    this.thermostatService.updateCharacteristic(Characteristic.CurrentTemperature, safeCurrentTempC);
 
     // Handle both high and low temperature special cases
     const targetTempF = s.control.set_temperature_f;
@@ -528,7 +616,9 @@ export class SleepmePlatformAccessory {
     } else {
       displayTempC = s.control.set_temperature_c;
     }
-    this.thermostatService.updateCharacteristic(Characteristic.TargetTemperature, displayTempC);
+    // Ensure target temperature is within valid range
+    const safeDisplayTempC = this.clampTemperature(displayTempC, 12, 46.7);
+    this.thermostatService.updateCharacteristic(Characteristic.TargetTemperature, safeDisplayTempC);
     
     // Get simplified state description - just STANDBY or ON
     const stateDesc = s.control.thermal_control_status === 'standby' ? 'STANDBY' : 'ON';
@@ -553,4 +643,3 @@ export class SleepmePlatformAccessory {
       this.previousHeatingCoolingState = currentState;
     }
   }
-}
