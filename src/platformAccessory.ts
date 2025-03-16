@@ -352,7 +352,7 @@ export class SleepmePlatformAccessory {
           }
           const tempC = ds.control.set_temperature_c;
           const tempF = (tempC * (9/5)) + 32;
-          this.platform.log(`${this.accessory.displayName}: Current target temperature: ${tempC}°C (${tempF.toFixed(1)}°F)`);
+          this.platform.log(`${this.accessory.displayName}: Target temperature: ${tempC}°C (${tempF.toFixed(1)}°F)`);
           return tempC;
         })
         .orElse(21))
@@ -469,7 +469,7 @@ export class SleepmePlatformAccessory {
   private updateControlFromResponse(response: { data: Control }) {
     if (this.deviceStatus) {
       this.deviceStatus.control = response.data;
-      this.platform.log(`${this.accessory.displayName}: Updated control status: ${response.data.thermal_control_status}`);
+      this.platform.log(`${this.accessory.displayName}: API confirmed state: ${response.data.thermal_control_status.toUpperCase()}`);
     }
     this.lastInteractionTime = new Date();
     this.publishUpdates();
@@ -516,7 +516,7 @@ export class SleepmePlatformAccessory {
     // Log current water temperature in both units
     const currentTempC = s.status.water_temperature_c;
     const currentTempF = (currentTempC * (9/5)) + 32;
-    this.platform.log(`${this.accessory.displayName}: Current temperature: ${currentTempC}°C (${currentTempF.toFixed(1)}°F)`);
+    this.platform.log(`${this.accessory.displayName}: Water temperature: ${currentTempC}°C (${currentTempF.toFixed(1)}°F)`);
     this.thermostatService.updateCharacteristic(Characteristic.CurrentTemperature, currentTempC);
 
     // Handle both high and low temperature special cases
@@ -531,13 +531,14 @@ export class SleepmePlatformAccessory {
     }
     this.platform.log(`${this.accessory.displayName}: Target temperature: ${displayTempC}°C (${targetTempF}°F)`);
     this.thermostatService.updateCharacteristic(Characteristic.TargetTemperature, displayTempC);
-
+    
+    // Only log if the state changes between OFF and ON (HEAT/COOL)
     if (this.previousHeatingCoolingState !== currentState) {
       const wasOff = this.previousHeatingCoolingState === 0;
       const isOff = currentState === 0;
       if (wasOff || isOff) {
         const stateText = isOff ? "STANDBY" : "ON";
-        this.platform.log(`${this.accessory.displayName}: Updated state to ${stateText}`);
+        this.platform.log(`${this.accessory.displayName}: HomeKit state changed to ${stateText}`);
       }
       this.previousHeatingCoolingState = currentState;
     }

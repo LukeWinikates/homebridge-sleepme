@@ -30,7 +30,7 @@ export class Client {
     }
   }
 
-private handleError(error: unknown, method: string, endpoint: string): never {
+  private handleError(error: unknown, method: string, endpoint: string): never {
     if (axios.isAxiosError(error)) {
       const axiosError = error as AxiosError;
       const status = axiosError.response?.status;
