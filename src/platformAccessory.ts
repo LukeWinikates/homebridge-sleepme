@@ -81,6 +81,10 @@ export class SleepmePlatformAccessory {
     private readonly platform: SleepmePlatform,
     private readonly accessory: PlatformAccessory,
   ) {
+	const pastTime = new Date();
+    pastTime.setHours(pastTime.getHours() - 2);
+    this.lastInteractionTime = pastTime;
+    this.platform.log.debug(`Initialized ${this.accessory.displayName} with lastInteractionTime set to ${this.lastInteractionTime} to ensure slow polling on startup`);
 	this.lastInteractionTime = new Date();
     const {Characteristic, Service} = this.platform;
     const {apiKey, device} = this.accessory.context as SleepmeContext;
@@ -305,20 +309,30 @@ export class SleepmePlatformAccessory {
         .orElse(1));
   }
 
+// filename: src/platformAccessory.ts
 private scheduleNextCheck(poller: () => Promise<DeviceStatus>) {
     const timeSinceLastInteractionMS = new Date().valueOf() - this.lastInteractionTime.valueOf();
+    const usesFastPolling = timeSinceLastInteractionMS < POLLING_RECENCY_THRESHOLD_MS;
+    const pollingInterval = usesFastPolling ? FAST_POLLING_INTERVAL_MS : this.slowPollingIntervalMs;
+    
+    this.platform.log.debug(`${this.accessory.displayName}: Scheduling next poll in ${pollingInterval/1000}s (${usesFastPolling ? 'fast' : 'slow'} polling mode)`);
+    this.platform.log.debug(`${this.accessory.displayName}: Last interaction was ${timeSinceLastInteractionMS/1000}s ago at ${this.lastInteractionTime}`);
+    
     clearTimeout(this.timeout);
     this.timeout = setTimeout(() => {
-      this.platform.log(`polling at: ${new Date()}`);
-      this.platform.log(`last interaction at: ${this.lastInteractionTime}`);
+      this.platform.log.debug(`${this.accessory.displayName}: Polling at: ${new Date()}`);
       poller().then(s => {
         this.deviceStatus = s;
         this.publishUpdates();
-        this.platform.log(`Current thermal control status: ${s.control.thermal_control_status}`);
+        this.platform.log.debug(`${this.accessory.displayName}: Current thermal control status: ${s.control.thermal_control_status}`);
       }).then(() => {
         this.scheduleNextCheck(poller);
+      }).catch(error => {
+        this.platform.log.error(`${this.accessory.displayName}: Error polling device: ${error.message}`);
+        // Still schedule next check even if there was an error
+        this.scheduleNextCheck(poller);
       });
-    }, timeSinceLastInteractionMS < POLLING_RECENCY_THRESHOLD_MS ? FAST_POLLING_INTERVAL_MS : this.slowPollingIntervalMs);
+    }, pollingInterval);
   }
 
   private updateControlFromResponse(response: { data: Control }) {
