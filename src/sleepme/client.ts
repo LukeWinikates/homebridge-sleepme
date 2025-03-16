@@ -38,7 +38,7 @@ export class Client {
       
       if (this.log) {
         if (status === 429) {
-          this.log.error(`API ${method} ${endpoint} - RATE LIMITED (429): Too many requests. Consider increasing your polling interval.`);
+          this.log.error(`API ${method} ${endpoint} - RATE LIMITED (429): Too many requests. Will retry later.`);
         } else {
           this.log.error(`API ${method} ${endpoint} - Error ${status}: ${statusText}`);
         }
@@ -56,8 +56,10 @@ export class Client {
         }
       }
       
-      // Rethrow a safer error that won't crash Homebridge
-      throw new Error(`API error ${status}: ${statusText}`);
+      // Create an error with the status code for special handling of rate limits
+      const error = new Error(`API error ${status}: ${statusText}`);
+      (error as any).statusCode = status; // Add the status code to the error object for 429 detection
+      throw error;
     } else {
       // For non-axios errors
       const errorMessage = error instanceof Error ? error.message : String(error);
