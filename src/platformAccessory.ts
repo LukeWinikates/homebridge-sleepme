@@ -702,4 +702,4 @@ export class SleepmePlatformAccessory {
     this.platform.log.debug(
       `${this.accessory.displayName}: Updated HomeKit - State: ${state.toUpperCase()}, Temp: ${temp}°F, Water: ${waterLevel}%`
     );
-  }
+  }}
