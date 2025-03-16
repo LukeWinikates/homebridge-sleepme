@@ -516,7 +516,7 @@ export class SleepmePlatformAccessory {
     // Log current water temperature in both units
     const currentTempC = s.status.water_temperature_c;
     const currentTempF = (currentTempC * (9/5)) + 32;
-    this.platform.log(`${this.accessory.displayName}: Current water temperature: ${currentTempC}°C (${currentTempF.toFixed(1)}°F)`);
+    this.platform.log(`${this.accessory.displayName}: Current temperature: ${currentTempC}°C (${currentTempF.toFixed(1)}°F)`);
     this.thermostatService.updateCharacteristic(Characteristic.CurrentTemperature, currentTempC);
 
     // Handle both high and low temperature special cases
@@ -531,10 +531,14 @@ export class SleepmePlatformAccessory {
     }
     this.platform.log(`${this.accessory.displayName}: Target temperature: ${displayTempC}°C (${targetTempF}°F)`);
     this.thermostatService.updateCharacteristic(Characteristic.TargetTemperature, displayTempC);
-    
-    // Only log if the heating/cooling state has changed
+
     if (this.previousHeatingCoolingState !== currentState) {
-      this.platform.log(`${this.accessory.displayName}: Updated heating/cooling state to: ${currentState} (0=OFF, 1=HEAT, 2=COOL)`);
+      const wasOff = this.previousHeatingCoolingState === 0;
+      const isOff = currentState === 0;
+      if (wasOff || isOff) {
+        const stateText = isOff ? "STANDBY" : "ON";
+        this.platform.log(`${this.accessory.displayName}: Updated state to ${stateText}`);
+      }
       this.previousHeatingCoolingState = currentState;
     }
   }
