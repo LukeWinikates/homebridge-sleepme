@@ -513,10 +513,9 @@ export class SleepmePlatformAccessory {
         Characteristic.TargetHeatingCoolingState.OFF : 
         Characteristic.TargetHeatingCoolingState.AUTO);
     
-    // Log current water temperature in both units
+    // Get current water temperature in both units
     const currentTempC = s.status.water_temperature_c;
     const currentTempF = (currentTempC * (9/5)) + 32;
-    this.platform.log(`${this.accessory.displayName}: Water temperature: ${currentTempC}°C (${currentTempF.toFixed(1)}°F)`);
     this.thermostatService.updateCharacteristic(Characteristic.CurrentTemperature, currentTempC);
 
     // Handle both high and low temperature special cases
@@ -529,8 +528,19 @@ export class SleepmePlatformAccessory {
     } else {
       displayTempC = s.control.set_temperature_c;
     }
-    this.platform.log(`${this.accessory.displayName}: Target temperature: ${displayTempC}°C (${targetTempF}°F)`);
     this.thermostatService.updateCharacteristic(Characteristic.TargetTemperature, displayTempC);
+    
+    // Get simplified state description - just STANDBY or ON
+    const stateDesc = s.control.thermal_control_status === 'standby' ? 'STANDBY' : 'ON';
+    
+    // Log consolidated temperature information based on state
+    if (s.control.thermal_control_status === 'standby') {
+      // In standby mode, only show current temperature
+      this.platform.log(`${this.accessory.displayName}: [${stateDesc}] Current: ${currentTempC.toFixed(1)}°C (${currentTempF.toFixed(1)}°F)`);
+    } else {
+      // In active mode, show both current and target temperatures
+      this.platform.log(`${this.accessory.displayName}: [${stateDesc}] Current: ${currentTempC.toFixed(1)}°C (${currentTempF.toFixed(1)}°F) → Target: ${displayTempC.toFixed(1)}°C (${targetTempF}°F)`);
+    }
     
     // Only log if the state changes between OFF and ON (HEAT/COOL)
     if (this.previousHeatingCoolingState !== currentState) {
