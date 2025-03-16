@@ -21,10 +21,17 @@
         "description": "Select the alert device type for low water level.",
         "default": "battery"
       },
-      "slow_polling_interval_minutes": {
-        "title": "API Polling Interval (Minutes)",
+      "active_polling_interval_seconds": {
+        "title": "Active Device Polling Interval (Seconds)",
         "type": "number",
-        "description": "Set the interval (in minutes) for passive polling of the Sleepme API.",
+        "description": "Set the interval (in seconds) for polling when device is active/on. Default: 60 seconds (1 minute)",
+        "default": 30,
+        "minimum": 10
+      },
+      "standby_polling_interval_minutes": {
+        "title": "Standby Device Polling Interval (Minutes)",
+        "type": "number",
+        "description": "Set the interval (in minutes) for polling when device is in standby/off. Default: 30 minutes",
         "default": 15,
         "minimum": 1
       }

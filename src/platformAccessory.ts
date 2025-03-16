@@ -11,7 +11,8 @@ type SleepmeContext = {
 
 interface PlatformConfig {
   water_level_type?: 'battery' | 'leak' | 'motion';
-  slow_polling_interval_minutes?: number;
+  active_polling_interval_seconds?: number;
+  standby_polling_interval_minutes?: number;
 }
 
 interface Mapper {
@@ -60,39 +61,33 @@ class Option<T> {
   }
 }
 
-const FAST_POLLING_INTERVAL_MS = 15 * 1000;
-const DEFAULT_SLOW_POLLING_INTERVAL_MINUTES = 15;
-const POLLING_RECENCY_THRESHOLD_MS = 60 * 1000;
+// Default polling intervals
+const DEFAULT_ACTIVE_POLLING_INTERVAL_SECONDS = 30;   // 30 seconds when device is active
+const DEFAULT_STANDBY_POLLING_INTERVAL_MINUTES = 15;  // 15 minutes when device is in standby
+const INITIAL_RETRY_DELAY_MS = 15000;                 // 15 seconds for first retry
+const MAX_RETRIES = 3;                                // Maximum number of retry attempts
+const STATE_MISMATCH_RETRY_DELAY_MS = 5000;           // 5 seconds between state mismatch retries
+const MAX_STATE_MISMATCH_RETRIES = 3;                 // Maximum retries for state mismatches
 const HIGH_TEMP_THRESHOLD_F = 115;
 const HIGH_TEMP_TARGET_F = 999;
 const LOW_TEMP_THRESHOLD_F = 55;
 const LOW_TEMP_TARGET_F = -1;
-const INITIAL_RETRY_DELAY_MS = 15000; // 15 seconds for first retry
-const MAX_RETRIES = 3; // Maximum number of retry attempts
-const STATE_MISMATCH_RETRY_DELAY_MS = 5000; // 5 seconds between state mismatch retries
-const MAX_STATE_MISMATCH_RETRIES = 3; // Maximum retries for state mismatches
 
 export class SleepmePlatformAccessory {
   private thermostatService: Service;
   private waterLevelService: Service;
   private deviceStatus: DeviceStatus | null;
-  private lastInteractionTime: Date;
   private timeout: NodeJS.Timeout | undefined;
   private readonly waterLevelType: 'battery' | 'leak' | 'motion';
-  private readonly slowPollingIntervalMs: number;
+  private readonly activePollingIntervalMs: number;
+  private readonly standbyPollingIntervalMs: number;
   private previousHeatingCoolingState: number | null = null;
-  private isStartup = true; // Add a flag to track initial startup
   private expectedThermalState: 'standby' | 'active' | null = null; // Track expected state
 
   constructor(
     private readonly platform: SleepmePlatform,
     private readonly accessory: PlatformAccessory,
   ) {
-    // Set lastInteractionTime to 2 hours in the past to ensure slow polling on startup
-    const pastTime = new Date();
-    pastTime.setHours(pastTime.getHours() - 2);
-    this.lastInteractionTime = pastTime;
-    
     const {Characteristic, Service} = this.platform;
     const {apiKey, device} = this.accessory.context as SleepmeContext;
     const client = new Client(apiKey, undefined, this.platform.log);
@@ -102,26 +97,42 @@ export class SleepmePlatformAccessory {
     const config = this.platform.config as PlatformConfig;
     this.waterLevelType = config.water_level_type || 'battery';
     
-    // Set up polling interval from config or use default
-    const configuredMinutes = config.slow_polling_interval_minutes;
-    if (configuredMinutes !== undefined) {
-      if (configuredMinutes < 1) {
-        this.platform.log.warn('Slow polling interval must be at least 1 minute. Using 1 minute.');
-        this.slowPollingIntervalMs = 60 * 1000;
+    // Set up active polling interval from config or use default
+    const configuredActiveSeconds = config.active_polling_interval_seconds;
+    if (configuredActiveSeconds !== undefined) {
+      if (configuredActiveSeconds < 5) {
+        this.platform.log.warn(`Active polling interval must be at least 5 seconds. Using 5 seconds.`);
+        this.activePollingIntervalMs = 5 * 1000;
       } else {
-        this.slowPollingIntervalMs = configuredMinutes * 60 * 1000;
-        this.platform.log.debug(`Using configured slow polling interval of ${configuredMinutes} minutes`);
+        this.activePollingIntervalMs = configuredActiveSeconds * 1000;
+        this.platform.log.debug(`Using configured active polling interval of ${configuredActiveSeconds} seconds`);
       }
     } else {
-      this.slowPollingIntervalMs = DEFAULT_SLOW_POLLING_INTERVAL_MINUTES * 60 * 1000;
-      this.platform.log.debug(`Using default slow polling interval of ${DEFAULT_SLOW_POLLING_INTERVAL_MINUTES} minutes`);
+      this.activePollingIntervalMs = DEFAULT_ACTIVE_POLLING_INTERVAL_SECONDS * 1000;
+      this.platform.log.debug(`Using default active polling interval of ${DEFAULT_ACTIVE_POLLING_INTERVAL_SECONDS} seconds`);
+    }
+
+    // Set up standby polling interval from config or use default
+    const configuredStandbyMinutes = config.standby_polling_interval_minutes;
+    if (configuredStandbyMinutes !== undefined) {
+      if (configuredStandbyMinutes < 1) {
+        this.platform.log.warn(`Standby polling interval must be at least 1 minute. Using 1 minute.`);
+        this.standbyPollingIntervalMs = 60 * 1000;
+      } else {
+        this.standbyPollingIntervalMs = configuredStandbyMinutes * 60 * 1000;
+        this.platform.log.debug(`Using configured standby polling interval of ${configuredStandbyMinutes} minutes`);
+      }
+    } else {
+      this.standbyPollingIntervalMs = DEFAULT_STANDBY_POLLING_INTERVAL_MINUTES * 60 * 1000;
+      this.platform.log.debug(`Using default standby polling interval of ${DEFAULT_STANDBY_POLLING_INTERVAL_MINUTES} minutes`);
     }
 
     // Debug log the startup state and configuration
-    this.platform.log.debug(`Initializing ${this.accessory.displayName} with forced slow polling on startup`);
-    this.platform.log.debug(`Initial lastInteractionTime set to ${this.lastInteractionTime}`);
+    this.platform.log.debug(`Initializing ${this.accessory.displayName}`);
     this.platform.log.debug('Configuration:', JSON.stringify(config));
     this.platform.log.debug(`Water level type configured as: ${this.waterLevelType}`);
+    this.platform.log.debug(`Active polling interval: ${this.activePollingIntervalMs/1000} seconds`);
+    this.platform.log.debug(`Standby polling interval: ${this.standbyPollingIntervalMs/60000} minutes`);
 
     // Initialize service bindings first
     this.thermostatService = this.accessory.getService(this.platform.Service.Thermostat) ||
@@ -200,7 +211,8 @@ export class SleepmePlatformAccessory {
         // Still continue with setup, we'll retry on the next polling cycle
       });
 
-    // Set up polling with forced slow mode on startup
+    // Set up polling based on initial unknown state
+    // We'll use the active polling rate initially until we know the device state
     this.scheduleNextCheck(async () => {
       this.platform.log.debug(`Polling device status for ${this.accessory.displayName}`)
       const r = await client.getDeviceStatus(device.id);
@@ -350,6 +362,9 @@ export class SleepmePlatformAccessory {
           this.deviceStatus.control.thermal_control_status = targetState;
           // Trigger UI update without waiting for API
           this.publishUpdates();
+          
+          // When the device state changes, we should update the polling interval immediately
+          this.scheduleNextPollBasedOnState();
         }
         
         // Then actually send the command to the API with retry support
@@ -384,6 +399,8 @@ export class SleepmePlatformAccessory {
               this.deviceStatus = statusResponse.data;
               this.expectedThermalState = null; // Clear the expected state
               this.publishUpdates();
+              // Update the polling schedule based on the actual state
+              this.scheduleNextPollBasedOnState();
             })
             .catch(refreshError => {
               this.platform.log.error(`${this.accessory.displayName}: Failed to refresh status after error: ${refreshError instanceof Error ? refreshError.message : String(refreshError)}`);
@@ -482,20 +499,50 @@ export class SleepmePlatformAccessory {
         .orElse(1));
   }
 
-  private scheduleNextCheck(poller: () => Promise<DeviceStatus>) {
-    // Force slow polling on the first call (startup)
-    const useSlowPollingOnStartup = this.isStartup;
-    if (this.isStartup) {
-      this.isStartup = false; // Clear the startup flag after first use
-      this.platform.log.debug(`${this.accessory.displayName}: Initial poll - FORCING slow polling mode`);
+  // New method to determine which polling interval to use based on device state
+  private getPollingIntervalBasedOnState(): number {
+    if (!this.deviceStatus) {
+      // If we don't know the state yet, use active polling rate
+      this.platform.log.debug(`${this.accessory.displayName}: No device status yet, using active polling interval`);
+      return this.activePollingIntervalMs;
     }
     
-    const timeSinceLastInteractionMS = new Date().valueOf() - this.lastInteractionTime.valueOf();
-    const usesFastPolling = !useSlowPollingOnStartup && (timeSinceLastInteractionMS < POLLING_RECENCY_THRESHOLD_MS);
-    const pollingInterval = usesFastPolling ? FAST_POLLING_INTERVAL_MS : this.slowPollingIntervalMs;
+    const isActive = this.deviceStatus.control.thermal_control_status === 'active';
+    const interval = isActive ? this.activePollingIntervalMs : this.standbyPollingIntervalMs;
     
-    this.platform.log.debug(`${this.accessory.displayName}: Scheduling next poll in ${pollingInterval/1000}s (${usesFastPolling ? 'FAST' : 'SLOW'} polling mode)`);
-    this.platform.log.debug(`${this.accessory.displayName}: Last interaction was ${timeSinceLastInteractionMS/1000}s ago at ${this.lastInteractionTime}`);
+    this.platform.log.debug(`${this.accessory.displayName}: Device is ${isActive ? 'ACTIVE' : 'STANDBY'}, using ${interval/1000} second polling interval`);
+    return interval;
+  }
+
+  // New method to immediately update polling schedule based on current state
+  private scheduleNextPollBasedOnState(): void {
+    // Clear existing timeout
+    if (this.timeout) {
+      clearTimeout(this.timeout);
+      this.timeout = undefined;
+    }
+    
+    // Get the appropriate polling interval based on state
+    const pollingInterval = this.getPollingIntervalBasedOnState();
+    
+    this.platform.log.debug(`${this.accessory.displayName}: Rescheduling polling with ${pollingInterval/1000}s interval based on current state`);
+    
+    // Schedule the next poll with the new interval
+    this.scheduleNextCheck(async () => {
+      const {apiKey, device} = this.accessory.context as SleepmeContext;
+      const client = new Client(apiKey, undefined, this.platform.log);
+      this.platform.log.debug(`Polling device status for ${this.accessory.displayName}`);
+      const r = await client.getDeviceStatus(device.id);
+      this.platform.log.debug(`Response (${this.accessory.displayName}): ${r.status}`);
+      return r.data;
+    });
+  }
+
+  private scheduleNextCheck(poller: () => Promise<DeviceStatus>) {
+    // Get the appropriate polling interval based on current state
+    const pollingInterval = this.getPollingIntervalBasedOnState();
+    
+    this.platform.log.debug(`${this.accessory.displayName}: Scheduling next poll in ${pollingInterval/1000}s`);
     
     clearTimeout(this.timeout);
     this.timeout = setTimeout(() => {
@@ -510,6 +557,7 @@ export class SleepmePlatformAccessory {
         "poll device status"
       )
       .then(s => {
+        const previousState = this.deviceStatus?.control.thermal_control_status;
         this.deviceStatus = s;
         
         // Check if we're waiting for a specific thermal state
@@ -527,10 +575,21 @@ export class SleepmePlatformAccessory {
           this.expectedThermalState = null;
         }
         
+        // Check if device state has changed, which would affect polling interval
+        const currentState = this.deviceStatus.control.thermal_control_status;
+        if (previousState !== currentState) {
+          this.platform.log.info(`${this.accessory.displayName}: Device state changed from ${previousState || 'unknown'} to ${currentState}, adjusting polling interval`);
+          // Update UI first
+          this.publishUpdates();
+          // Then reschedule with the new appropriate interval
+          this.scheduleNextPollBasedOnState();
+          return; // Skip the normal schedule since we're rescheduling with a different interval
+        }
+        
         this.publishUpdates();
         this.platform.log.debug(`${this.accessory.displayName}: Current thermal control status: ${s.control.thermal_control_status}`);
-      })
-      .then(() => {
+        
+        // Schedule next poll with the same interval
         this.scheduleNextCheck(poller);
       })
       .catch(error => {
@@ -553,94 +612,11 @@ export class SleepmePlatformAccessory {
       // Clear any expected state since the response matches (or we didn't have an expectation)
       this.expectedThermalState = null;
       
+      const previousState = this.deviceStatus.control.thermal_control_status;
       this.deviceStatus.control = response.data;
       this.platform.log(`${this.accessory.displayName}: API confirmed state: ${response.data.thermal_control_status.toUpperCase()}`);
-    }
-    this.lastInteractionTime = new Date();
-    this.publishUpdates();
-  }
-
-  private publishUpdates() {
-    const s = this.deviceStatus;
-    if (!s) {
-      return;
-    }
-
-    const {Characteristic} = this.platform;
-    const mapper = newMapper(this.platform);
-    
-    const currentState = mapper.toHeatingCoolingState(s);
-    
-    // Update water level service based on type
-    if (this.waterLevelType === 'leak') {
-      this.waterLevelService.updateCharacteristic(
-        Characteristic.LeakDetected,
-        s.status.is_water_low ?
-          Characteristic.LeakDetected.LEAK_DETECTED : 
-          Characteristic.LeakDetected.LEAK_NOT_DETECTED
-      );
-    } else if (this.waterLevelType === 'motion') {
-      this.waterLevelService.updateCharacteristic(
-        Characteristic.MotionDetected,
-        s.status.is_water_low
-      );
-    } else {
-      this.waterLevelService.updateCharacteristic(Characteristic.BatteryLevel, s.status.water_level);
-      this.waterLevelService.updateCharacteristic(Characteristic.StatusLowBattery, s.status.is_water_low);
-    }
-
-    // Update thermostat characteristics
-    this.thermostatService.updateCharacteristic(Characteristic.TemperatureDisplayUnits, 
-      s.control.display_temperature_unit === 'c' ? 0 : 1);
-    this.thermostatService.updateCharacteristic(Characteristic.CurrentHeatingCoolingState, currentState);
-    this.thermostatService.updateCharacteristic(Characteristic.TargetHeatingCoolingState, 
-      s.control.thermal_control_status === 'standby' ? 
-        Characteristic.TargetHeatingCoolingState.OFF : 
-        Characteristic.TargetHeatingCoolingState.AUTO);
-    
-    // Get current water temperature in both units
-    const currentTempC = s.status.water_temperature_c;
-    const currentTempF = (currentTempC * (9/5)) + 32;
-    
-    // Ensure temperature is within valid range for HomeKit
-    const safeCurrentTempC = this.clampTemperature(currentTempC, 12, 46.7);
-    this.thermostatService.updateCharacteristic(Characteristic.CurrentTemperature, safeCurrentTempC);
-
-    // Handle both high and low temperature special cases
-    const targetTempF = s.control.set_temperature_f;
-    let displayTempC;
-    if (targetTempF >= HIGH_TEMP_TARGET_F) {
-      displayTempC = 46.7;
-    } else if (targetTempF <= LOW_TEMP_TARGET_F) {
-      displayTempC = 12.2; // 54°F in Celsius
-    } else {
-      displayTempC = s.control.set_temperature_c;
-    }
-    // Ensure target temperature is within valid range
-    const safeDisplayTempC = this.clampTemperature(displayTempC, 12, 46.7);
-    this.thermostatService.updateCharacteristic(Characteristic.TargetTemperature, safeDisplayTempC);
-    
-    // Get simplified state description - just STANDBY or ON
-    const stateDesc = s.control.thermal_control_status === 'standby' ? 'STANDBY' : 'ON';
-    
-    // Log consolidated temperature information based on state
-    if (s.control.thermal_control_status === 'standby') {
-      // In standby mode, only show current temperature
-      this.platform.log(`${this.accessory.displayName}: [${stateDesc}] ${currentTempC.toFixed(1)}°C (${currentTempF.toFixed(1)}°F)`);
-    } else {
-      // In active mode, show both current and target temperatures
-      this.platform.log(`${this.accessory.displayName}: [${stateDesc}] Current: ${currentTempC.toFixed(1)}°C (${currentTempF.toFixed(1)}°F) → Target: ${displayTempC.toFixed(1)}°C (${targetTempF}°F)`);
-    }
-    
-    // Only log if the state changes between OFF and ON (HEAT/COOL)
-    if (this.previousHeatingCoolingState !== currentState) {
-      const wasOff = this.previousHeatingCoolingState === 0;
-      const isOff = currentState === 0;
-      if (wasOff || isOff) {
-        const stateText = isOff ? "STANDBY" : "ON";
-        //this.platform.log(`${this.accessory.displayName}: HomeKit state changed to ${stateText}`);
+      
+      // If thermal state changed, update polling interval
+      if (previousState !== response.data.thermal_control_status) {
+        this.scheduleNextPollBasedOnState();
       }
-      this.previousHeatingCoolingState = currentState;
-    }
-  }
-}
