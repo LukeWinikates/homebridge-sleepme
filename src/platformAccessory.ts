@@ -620,3 +620,6 @@ export class SleepmePlatformAccessory {
       if (previousState !== response.data.thermal_control_status) {
         this.scheduleNextPollBasedOnState();
       }
+    }
+    this.publishUpdates();
+  }
