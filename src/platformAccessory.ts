@@ -313,7 +313,7 @@ export class SleepmePlatformAccessory {
           "set thermal control status"
         )
         .then(r => {
-          this.platform.log(`${this.accessory.displayName}: API response: ${r.status}`);
+          //this.platform.log(`${this.accessory.displayName}: API response: ${r.status}`);
           // Update with the actual API response
           this.updateControlFromResponse(r);
         })
