@@ -600,7 +600,7 @@ export class SleepmePlatformAccessory {
     }, pollingInterval);
   }
 
- private updateControlFromResponse(response: { data: Control }) {
+  private updateControlFromResponse(response: { data: Control }) {
     if (!this.deviceStatus) {
       return;
     }
@@ -625,4 +625,81 @@ export class SleepmePlatformAccessory {
     }
     
     this.publishUpdates();
+  }
+  
+  // Publishes all characteristic updates to HomeKit
+  private publishUpdates(): void {
+    if (!this.deviceStatus) {
+      return;
+    }
+    
+    const { Characteristic } = this.platform;
+    
+    // Update thermostat characteristics
+    this.thermostatService.updateCharacteristic(
+      Characteristic.CurrentHeatingCoolingState,
+      newMapper(this.platform).toHeatingCoolingState(this.deviceStatus)
+    );
+    
+    this.thermostatService.updateCharacteristic(
+      Characteristic.TargetHeatingCoolingState,
+      this.deviceStatus.control.thermal_control_status === 'standby' ? 
+        Characteristic.TargetHeatingCoolingState.OFF : 
+        Characteristic.TargetHeatingCoolingState.AUTO
+    );
+    
+    const currentTemp = this.clampTemperature(this.deviceStatus.status.water_temperature_c, 12, 46.7);
+    this.thermostatService.updateCharacteristic(Characteristic.CurrentTemperature, currentTemp);
+    
+    // Determine target temperature value considering special cases
+    let targetTemp = this.deviceStatus.control.set_temperature_c;
+    if (this.deviceStatus.control.set_temperature_f >= HIGH_TEMP_TARGET_F) {
+      targetTemp = 46.7; // Maximum allowed Celsius temperature
+    } else if (this.deviceStatus.control.set_temperature_f <= LOW_TEMP_TARGET_F) {
+      targetTemp = 12.2; // Minimum allowed temperature
+    }
+    
+    // Apply valid range clamping
+    targetTemp = this.clampTemperature(targetTemp, 12, 46.7);
+    this.thermostatService.updateCharacteristic(Characteristic.TargetTemperature, targetTemp);
+    
+    this.thermostatService.updateCharacteristic(
+      Characteristic.TemperatureDisplayUnits,
+      this.deviceStatus.control.display_temperature_unit === 'c' ? 0 : 1
+    );
+    
+    // Update water level characteristics based on service type
+    if (this.waterLevelType === 'leak') {
+      this.waterLevelService.updateCharacteristic(
+        Characteristic.LeakDetected,
+        this.deviceStatus.status.is_water_low ? 
+          Characteristic.LeakDetected.LEAK_DETECTED : 
+          Characteristic.LeakDetected.LEAK_NOT_DETECTED
+      );
+    } else if (this.waterLevelType === 'motion') {
+      this.waterLevelService.updateCharacteristic(
+        Characteristic.MotionDetected,
+        this.deviceStatus.status.is_water_low
+      );
+    } else {
+      // Battery service
+      this.waterLevelService.updateCharacteristic(
+        Characteristic.StatusLowBattery,
+        this.deviceStatus.status.is_water_low
+      );
+      
+      this.waterLevelService.updateCharacteristic(
+        Characteristic.BatteryLevel,
+        this.deviceStatus.status.water_level
+      );
+    }
+    
+    // Log the state update if needed
+    const state = this.deviceStatus.control.thermal_control_status;
+    const temp = this.deviceStatus.control.set_temperature_f;
+    const waterLevel = this.deviceStatus.status.water_level;
+    
+    this.platform.log.debug(
+      `${this.accessory.displayName}: Updated HomeKit - State: ${state.toUpperCase()}, Temp: ${temp}°F, Water: ${waterLevel}%`
+    );
   }
