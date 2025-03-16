@@ -600,26 +600,29 @@ export class SleepmePlatformAccessory {
     }, pollingInterval);
   }
 
-  private updateControlFromResponse(response: { data: Control }) {
-    if (this.deviceStatus) {
-      // Check if the response state matches the expected state (if we have one)
-      if (this.expectedThermalState !== null && response.data.thermal_control_status !== this.expectedThermalState) {
-        this.platform.log.warn(`${this.accessory.displayName}: API returned ${response.data.thermal_control_status}, but expected ${this.expectedThermalState}. Not updating HomeKit.`);
-        // Don't update with the mismatched state
-        return;
-      }
-      
-      // Clear any expected state since the response matches (or we didn't have an expectation)
-      this.expectedThermalState = null;
-      
-      const previousState = this.deviceStatus.control.thermal_control_status;
-      this.deviceStatus.control = response.data;
-      this.platform.log(`${this.accessory.displayName}: API confirmed state: ${response.data.thermal_control_status.toUpperCase()}`);
-      
-      // If thermal state changed, update polling interval
-      if (previousState !== response.data.thermal_control_status) {
-        this.scheduleNextPollBasedOnState();
-      }
+ private updateControlFromResponse(response: { data: Control }) {
+    if (!this.deviceStatus) {
+      return;
     }
+    
+    // Check if the response state matches the expected state (if we have one)
+    if (this.expectedThermalState !== null && response.data.thermal_control_status !== this.expectedThermalState) {
+      this.platform.log.warn(`${this.accessory.displayName}: API returned ${response.data.thermal_control_status}, but expected ${this.expectedThermalState}. Not updating HomeKit.`);
+      // Don't update with the mismatched state
+      return;
+    }
+    
+    // Clear any expected state since the response matches (or we didn't have an expectation)
+    this.expectedThermalState = null;
+    
+    const previousState = this.deviceStatus.control.thermal_control_status;
+    this.deviceStatus.control = response.data;
+    this.platform.log(`${this.accessory.displayName}: API confirmed state: ${response.data.thermal_control_status.toUpperCase()}`);
+    
+    // If thermal state changed, update polling interval
+    if (previousState !== response.data.thermal_control_status) {
+      this.scheduleNextPollBasedOnState();
+    }
+    
     this.publishUpdates();
   }
