@@ -334,7 +334,7 @@ export class SleepmePlatformAccessory {
     this.thermostatService.getCharacteristic(Characteristic.CurrentTemperature)
       .onGet(() => new Option(this.deviceStatus)
         .map(ds => ds.status.water_temperature_c)
-        .orElse(-270));
+        .orElse(21));
 
     this.thermostatService.getCharacteristic(Characteristic.TargetTemperature)
       .setProps({
@@ -352,7 +352,7 @@ export class SleepmePlatformAccessory {
           }
           const tempC = ds.control.set_temperature_c;
           const tempF = (tempC * (9/5)) + 32;
-          this.platform.log(`${this.accessory.displayName}: Target temperature: ${tempC}°C (${tempF.toFixed(1)}°F)`);
+          //this.platform.log(`${this.accessory.displayName}: Target temperature: ${tempC}°C (${tempF.toFixed(1)}°F)`);
           return tempC;
         })
         .orElse(21))
@@ -536,7 +536,7 @@ export class SleepmePlatformAccessory {
     // Log consolidated temperature information based on state
     if (s.control.thermal_control_status === 'standby') {
       // In standby mode, only show current temperature
-      this.platform.log(`${this.accessory.displayName}: [${stateDesc}] Current: ${currentTempC.toFixed(1)}°C (${currentTempF.toFixed(1)}°F)`);
+      this.platform.log(`${this.accessory.displayName}: [${stateDesc}] ${currentTempC.toFixed(1)}°C (${currentTempF.toFixed(1)}°F)`);
     } else {
       // In active mode, show both current and target temperatures
       this.platform.log(`${this.accessory.displayName}: [${stateDesc}] Current: ${currentTempC.toFixed(1)}°C (${currentTempF.toFixed(1)}°F) → Target: ${displayTempC.toFixed(1)}°C (${targetTempF}°F)`);
