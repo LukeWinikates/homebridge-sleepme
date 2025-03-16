@@ -1,3 +1,4 @@
+// filename: src/platform.ts
 import {API, DynamicPlatformPlugin, Logging, PlatformAccessory, Service, Characteristic} from 'homebridge';
 
 import {Client} from './sleepme/client.js';
@@ -114,6 +115,8 @@ export class SleepmePlatform implements DynamicPlatformPlugin {
             this.api.registerPlatformAccessories(PLUGIN_NAME, PLATFORM_NAME, [accessory]);
           }
         });
+      }).catch(error => {
+        this.log.error(`Failed to discover devices: ${error instanceof Error ? error.message : String(error)}`);
       });
     });
   }

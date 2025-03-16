@@ -90,7 +90,7 @@ export class SleepmePlatformAccessory {
     
     const {Characteristic, Service} = this.platform;
     const {apiKey, device} = this.accessory.context as SleepmeContext;
-    const client = new Client(apiKey);
+    const client = new Client(apiKey, undefined, this.platform.log);
     this.deviceStatus = null;
 
     // Get configuration
@@ -189,6 +189,10 @@ export class SleepmePlatformAccessory {
       .then(statusResponse => {
         this.deviceStatus = statusResponse.data;
         this.publishUpdates();
+      })
+      .catch(error => {
+        this.platform.log.error(`Failed to get initial device status for ${this.accessory.displayName}: ${error instanceof Error ? error.message : String(error)}`);
+        // Still continue with setup, we'll retry on the next polling cycle
       });
 
     // Set up polling with forced slow mode on startup
@@ -250,11 +254,15 @@ export class SleepmePlatformAccessory {
         const targetState = (value === Characteristic.TargetHeatingCoolingState.OFF) ? 'standby' : 'active';
         this.platform.log(`setting TargetHeatingCoolingState for ${this.accessory.displayName} to ${targetState} (${value})`);
         
-        return client.setThermalControlStatus(device.id, targetState)
-          .then(r => {
-            this.platform.log(`response (${this.accessory.displayName}): ${r.status}`);
-            this.updateControlFromResponse(r);
-          });
+        try {
+          const r = await client.setThermalControlStatus(device.id, targetState);
+          this.platform.log(`response (${this.accessory.displayName}): ${r.status}`);
+          this.updateControlFromResponse(r);
+        } catch (error) {
+          this.platform.log.error(`Failed to set thermal control state: ${error instanceof Error ? error.message : String(error)}`);
+          // Re-throw a specific HomeKit error to indicate the operation failed
+          throw new this.platform.api.hap.HapStatusError(this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE);
+        }
       });
 
     this.thermostatService.getCharacteristic(Characteristic.CurrentTemperature)
@@ -278,7 +286,7 @@ export class SleepmePlatformAccessory {
           }
           const tempC = ds.control.set_temperature_c;
           const tempF = (tempC * (9/5)) + 32;
-          this.platform.log(`Current target temperature: ${tempC}°C (${tempF.toFixed(1)}°F)`);
+          this.platform.log(`${this.accessory.displayName}: Current target temperature: ${tempC}°C (${tempF.toFixed(1)}°F)`);
           return tempC;
         })
         .orElse(21))
@@ -289,22 +297,28 @@ export class SleepmePlatformAccessory {
         // Round to nearest whole number for API call
         tempF = Math.round(tempF);
         
-        // Map temperatures over threshold to HIGH_TEMP_TARGET_F
-        // and under threshold to LOW_TEMP_TARGET_F
-        if (tempF > HIGH_TEMP_THRESHOLD_F) {
-          this.platform.log(`Temperature over ${HIGH_TEMP_THRESHOLD_F}F, mapping to ${HIGH_TEMP_TARGET_F}F for API call`);
-          await client.setTemperatureFahrenheit(device.id, HIGH_TEMP_TARGET_F);
-        } else if (tempF < LOW_TEMP_THRESHOLD_F) {
-          this.platform.log(`Temperature under ${LOW_TEMP_THRESHOLD_F}F, mapping to ${LOW_TEMP_TARGET_F}F for API call`);
-          await client.setTemperatureFahrenheit(device.id, LOW_TEMP_TARGET_F);
-        } else {
-          this.platform.log(`Setting temperature to: ${tempC}°C (${tempF}°F)`);
-          await client.setTemperatureFahrenheit(device.id, tempF);
+        try {
+          // Map temperatures over threshold to HIGH_TEMP_TARGET_F
+          // and under threshold to LOW_TEMP_TARGET_F
+          if (tempF > HIGH_TEMP_THRESHOLD_F) {
+            this.platform.log(`${this.accessory.displayName}: Temperature over ${HIGH_TEMP_THRESHOLD_F}F, mapping to ${HIGH_TEMP_TARGET_F}F for API call`);
+            await client.setTemperatureFahrenheit(device.id, HIGH_TEMP_TARGET_F);
+          } else if (tempF < LOW_TEMP_THRESHOLD_F) {
+            this.platform.log(`${this.accessory.displayName}: Temperature under ${LOW_TEMP_THRESHOLD_F}F, mapping to ${LOW_TEMP_TARGET_F}F for API call`);
+            await client.setTemperatureFahrenheit(device.id, LOW_TEMP_TARGET_F);
+          } else {
+            this.platform.log(`${this.accessory.displayName}: Setting temperature to: ${tempC}°C (${tempF}°F)`);
+            await client.setTemperatureFahrenheit(device.id, tempF);
+          }
+          
+          const r = await client.getDeviceStatus(device.id);
+          this.deviceStatus = r.data;  // Update full device status
+          this.publishUpdates();
+        } catch (error) {
+          this.platform.log.error(`Failed to set temperature: ${error instanceof Error ? error.message : String(error)}`);
+          // Re-throw a specific HomeKit error to indicate the operation failed
+          throw new this.platform.api.hap.HapStatusError(this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE);
         }
-        
-        const r = await client.getDeviceStatus(device.id);
-        this.deviceStatus = r.data;  // Update full device status
-        this.publishUpdates();
       });
 
     this.thermostatService.getCharacteristic(Characteristic.TemperatureDisplayUnits)
@@ -348,7 +362,7 @@ export class SleepmePlatformAccessory {
   private updateControlFromResponse(response: { data: Control }) {
     if (this.deviceStatus) {
       this.deviceStatus.control = response.data;
-      this.platform.log(`Updated control status: ${response.data.thermal_control_status}`);
+      this.platform.log(`${this.accessory.displayName}: Updated control status: ${response.data.thermal_control_status}`);
     }
     this.lastInteractionTime = new Date();
     this.publishUpdates();
@@ -395,7 +409,7 @@ export class SleepmePlatformAccessory {
     // Log current water temperature in both units
     const currentTempC = s.status.water_temperature_c;
     const currentTempF = (currentTempC * (9/5)) + 32;
-    this.platform.log(`Current water temperature: ${currentTempC}°C (${currentTempF.toFixed(1)}°F)`);
+    this.platform.log(`${this.accessory.displayName}: Current water temperature: ${currentTempC}°C (${currentTempF.toFixed(1)}°F)`);
     this.thermostatService.updateCharacteristic(Characteristic.CurrentTemperature, currentTempC);
 
     // Handle both high and low temperature special cases
@@ -408,12 +422,12 @@ export class SleepmePlatformAccessory {
     } else {
       displayTempC = s.control.set_temperature_c;
     }
-    this.platform.log(`Target temperature: ${displayTempC}°C (${targetTempF}°F)`);
+    this.platform.log(`${this.accessory.displayName}: Target temperature: ${displayTempC}°C (${targetTempF}°F)`);
     this.thermostatService.updateCharacteristic(Characteristic.TargetTemperature, displayTempC);
     
     // Only log if the heating/cooling state has changed
     if (this.previousHeatingCoolingState !== currentState) {
-      this.platform.log(`Updated heating/cooling state to: ${currentState} (0=OFF, 1=HEAT, 2=COOL)`);
+      this.platform.log(`${this.accessory.displayName}: Updated heating/cooling state to: ${currentState} (0=OFF, 1=HEAT, 2=COOL)`);
       this.previousHeatingCoolingState = currentState;
     }
   }
