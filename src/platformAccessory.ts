@@ -295,7 +295,7 @@ export class SleepmePlatformAccessory {
         .orElse(Characteristic.TargetHeatingCoolingState.OFF))
       .onSet(async (value: CharacteristicValue) => {
         const targetState = (value === Characteristic.TargetHeatingCoolingState.OFF) ? 'standby' : 'active';
-        this.platform.log(`${this.accessory.displayName}: setting TargetHeatingCoolingState to ${targetState} (${value})`);
+        this.platform.log(`${this.accessory.displayName}: HomeKit state changed to ${targetState}`);
         
         // Optimistically update the local state first for immediate HomeKit feedback
         if (this.deviceStatus) {
@@ -538,7 +538,7 @@ export class SleepmePlatformAccessory {
       const isOff = currentState === 0;
       if (wasOff || isOff) {
         const stateText = isOff ? "STANDBY" : "ON";
-        this.platform.log(`${this.accessory.displayName}: HomeKit state changed to ${stateText}`);
+        //this.platform.log(`${this.accessory.displayName}: HomeKit state changed to ${stateText}`);
       }
       this.previousHeatingCoolingState = currentState;
     }
