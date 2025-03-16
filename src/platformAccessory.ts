@@ -643,3 +643,4 @@ export class SleepmePlatformAccessory {
       this.previousHeatingCoolingState = currentState;
     }
   }
+}
