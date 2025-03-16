@@ -24,14 +24,14 @@
       "active_polling_interval_seconds": {
         "title": "Active Device Polling Interval (Seconds)",
         "type": "number",
-        "description": "Set the interval (in seconds) for polling when device is active/on. Default: 60 seconds (1 minute)",
-        "default": 30,
+        "description": "Set the interval (in seconds) for polling when device is active/on. Default: 45 seconds",
+        "default": 45,
         "minimum": 10
       },
       "standby_polling_interval_minutes": {
         "title": "Standby Device Polling Interval (Minutes)",
         "type": "number",
-        "description": "Set the interval (in minutes) for polling when device is in standby/off. Default: 30 minutes",
+        "description": "Set the interval (in minutes) for polling when device is in standby/off. Default: 15 minutes",
         "default": 15,
         "minimum": 1
       }

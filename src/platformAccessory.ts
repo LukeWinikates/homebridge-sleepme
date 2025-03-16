@@ -62,7 +62,7 @@ class Option<T> {
 }
 
 // Default polling intervals
-const DEFAULT_ACTIVE_POLLING_INTERVAL_SECONDS = 30;   // 30 seconds when device is active
+const DEFAULT_ACTIVE_POLLING_INTERVAL_SECONDS = 45;   // 45 seconds when device is active
 const DEFAULT_STANDBY_POLLING_INTERVAL_MINUTES = 15;  // 15 minutes when device is in standby
 const INITIAL_RETRY_DELAY_MS = 15000;                 // 15 seconds for first retry
 const MAX_RETRIES = 3;                                // Maximum number of retry attempts
