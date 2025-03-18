@@ -18,6 +18,11 @@
     "node": "^18.17.0 || ^20.9.0 || ^22.0.0",
     "homebridge": "^1.8.0 || ^2.0.0-beta.0"
   },
+  "files": [
+    "dist/**/*.js",
+    "dist/**/*.cjs",
+    "dist/**/*.d.ts"
+  ],
   "main": "dist/index.js",
   "scripts": {
     "lint": "eslint src/**/*.ts --max-warnings=0",
