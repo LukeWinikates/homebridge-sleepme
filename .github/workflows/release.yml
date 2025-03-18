@@ -19,7 +19,7 @@ jobs:
           git config user.email "${GITHUB_ACTOR}@users.noreply.github.com"
       - run: |
           npm ci
-          npm build
+          npm run build
           npx release-it --ci
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
