@@ -21,7 +21,8 @@
   "files": [
     "dist/**/*.js",
     "dist/**/*.cjs",
-    "dist/**/*.d.ts"
+    "dist/**/*.d.ts",
+    "config.schema.json"
   ],
   "main": "dist/index.js",
   "scripts": {
