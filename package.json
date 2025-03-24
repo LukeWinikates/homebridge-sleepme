@@ -24,6 +24,10 @@
     "dist/**/*.d.ts",
     "config.schema.json"
   ],
+  "funding": {
+    "type" : "github",
+    "url" : "https://github.com/sponsors/LukeWinikates"
+  },
   "main": "dist/index.js",
   "scripts": {
     "lint": "eslint src/**/*.ts --max-warnings=0",
