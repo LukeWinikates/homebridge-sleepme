@@ -21,7 +21,7 @@ export type PluginConfig = {
 };
 
 const validateConfig = (config: PlatformConfig): [boolean, string] => {
-  if (!config.api_keys || !Array.isArray(config.api_keys)) {
+  if (!(config.api_keys && Array.isArray(config.api_keys))) {
     return [false, 'No API keys configured - plugin will not start'];
   }
 
