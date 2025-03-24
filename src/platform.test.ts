@@ -30,7 +30,7 @@ describe('platform', () => {
       expect(platform.log.error).toHaveBeenCalledWith('No API keys configured - plugin will not start');
     });
 
-    test('with non-array api_keys', () => {
+    test('with empty array api_keys', () => {
       const platform = createPluginForTest({platform: 'SleepmeHomebridgePlugin', api_keys: {a: 'b'}});
       (platform.api as unknown as EventEmitter).emit('didFinishLaunching');
       expect(platform.log.error).toHaveBeenCalledWith('No API keys configured - plugin will not start');
