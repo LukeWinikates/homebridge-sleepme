@@ -3,7 +3,7 @@
   "displayName": "Homebridge Sleepme",
   "name": "homebridge-sleepme",
   "homepage": "https://github.com/LukeWinikates/homebridge-sleepme",
-  "version": "0.2.4",
+  "version": "0.2.5",
   "description": "HomeKit support for Sleepme Dock Pro devices via Homebridge",
   "license": "Apache-2.0",
   "type": "module",
@@ -25,8 +25,8 @@
     "config.schema.json"
   ],
   "funding": {
-    "type" : "github",
-    "url" : "https://github.com/sponsors/LukeWinikates"
+    "type": "github",
+    "url": "https://github.com/sponsors/LukeWinikates"
   },
   "main": "dist/index.js",
   "scripts": {
