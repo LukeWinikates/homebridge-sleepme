@@ -1,17 +1,17 @@
 {
   "private": false,
-  "displayName": "Homebridge Sleepme",
-  "name": "homebridge-sleepme",
+  "displayName": "Homebridge Sleepme Dock Pro",
+  "name": "homebridge-sleepme-dockpro",
   "version": "0.2.0",
-  "description": "HomeKit support for Sleepme Dock Pro devices via Homebridge",
+  "description": "Extended HomeKit support for Sleepme Dock Pro devices via Homebridge",
   "license": "Apache-2.0",
   "type": "module",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/LukeWinikates/homebridge-sleepme.git"
+    "url": "git+https://github.com/DaveLinger/homebridge-sleepme-dockpro.git"
   },
   "bugs": {
-    "url": "https://github.com/LukeWinikates/homebridge-sleepme/issues"
+    "url": "https://github.com/DaveLinger/homebridge-sleepme-dockpro/issues"
   },
   "engines": {
     "node": "^18.17.0 || ^20.9.0",

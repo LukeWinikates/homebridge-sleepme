@@ -1,5 +1,5 @@
 {
-  "pluginAlias": "SleepmeHomebridgePlugin",
+  "pluginAlias": "SleepmeDockProHomebridgePlugin",
   "pluginType": "platform",
   "singular": true,
   "headerDisplay": "To create Sleepme API keys, set up a developer account [here](https://docs.developer.sleep.me/docs/)",
