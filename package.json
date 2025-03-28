@@ -8,10 +8,10 @@
   "type": "module",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/LukeWinikates/homebridge-sleepme.git"
+    "url": "git+https://github.com/DaveLinger/homebridge-sleepme-dockpro.git"
   },
   "bugs": {
-    "url": "https://github.com/LukeWinikates/homebridge-sleepme/issues"
+    "url": "https://github.com/DaveLinger/homebridge-sleepme-dockpro/issues"
   },
   "engines": {
     "node": "^18.17.0 || ^20.9.0",
