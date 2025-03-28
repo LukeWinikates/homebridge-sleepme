@@ -2,7 +2,8 @@
   "private": false,
   "displayName": "Homebridge Sleepme Dock Pro",
   "name": "homebridge-sleepme-dockpro",
-  "version": "1.0.1",
+  "homepage": "https://github.com/DaveLinger/homebridge-sleepme-dockpro",
+  "version": "1.0.2",
   "description": "Extended HomeKit support for Sleepme Dock Pro devices via Homebridge",
   "license": "Apache-2.0",
   "type": "module",
@@ -14,7 +15,7 @@
     "url": "https://github.com/DaveLinger/homebridge-sleepme-dockpro/issues"
   },
   "engines": {
-    "node": "^18.17.0 || ^20.9.0",
+    "node": "^18.17.0 || ^20.9.0 || ^22.0.0",
     "homebridge": "^1.8.0"
   },
   "main": "dist/index.js",
@@ -26,7 +27,12 @@
     "test": "jest"
   },
   "keywords": [
-    "homebridge-plugin"
+    "homebridge-plugin",
+    "sleepme",
+    "chili pad",
+    "chilipad",
+    "dock pro",
+    "dockpro"
   ],
   "devDependencies": {
     "@babel/core": "^7.25.2",

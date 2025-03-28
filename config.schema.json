@@ -12,7 +12,13 @@
         "items": {
           "title": "Key",
           "type": "string"
-        }
+        },
+        "name": {
+        "title": "Name",
+        "type": "string",
+        "required": true,
+        "default": "Homebridge Sleepme Dock Pro"
+      }
       },
       "water_level_type": {
         "title": "Low Water Level Alert Type",
