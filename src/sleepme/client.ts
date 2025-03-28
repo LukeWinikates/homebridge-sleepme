@@ -1,4 +1,6 @@
-import axios, {AxiosInstance} from 'axios';
+// filename: src/sleepme/client.ts
+import axios, {AxiosInstance, AxiosResponse, AxiosError} from 'axios';
+import {Logging} from 'homebridge';
 
 type ClientResponse<T> = {
   data: T;
@@ -8,10 +10,12 @@ type ClientResponse<T> = {
 export class Client {
   readonly token: string;
   private readonly axiosClient: AxiosInstance
+  private readonly log?: Logging;
 
-  constructor(token: string, baseURL = 'https://api.developer.sleep.me') {
+  constructor(token: string, baseURL = 'https://api.developer.sleep.me', log?: Logging) {
     this.token = token;
     this.axiosClient = axios.create({baseURL: baseURL});
+    this.log = log;
   }
 
   headers(): object {
@@ -20,29 +24,117 @@ export class Client {
     };
   }
 
-  listDevices(): Promise<ClientResponse<Device[]>> {
-    return this.axiosClient.get<Device[]>('/v1/devices',
-      {headers: this.headers()});
+  private logResponse<T>(response: AxiosResponse<T>, method: string, endpoint: string): void {
+    if (this.log) {
+      this.log.debug(`API ${method} ${endpoint} - Response Code: ${response.status}`);
+    }
   }
 
-  getDeviceStatus(id: string): Promise<ClientResponse<DeviceStatus>> {
-    return this.axiosClient.get<DeviceStatus>('/v1/devices/' + id,
-      {headers: this.headers()});
+  private handleError(error: unknown, method: string, endpoint: string): never {
+    if (axios.isAxiosError(error)) {
+      const axiosError = error as AxiosError;
+      const status = axiosError.response?.status;
+      const statusText = axiosError.response?.statusText || 'Unknown error';
+      
+      if (this.log) {
+        if (status === 429) {
+          this.log.error(`API ${method} ${endpoint} - RATE LIMITED (429): Too many requests. Will retry later.`);
+        } else {
+          this.log.error(`API ${method} ${endpoint} - Error ${status}: ${statusText}`);
+        }
+        
+        // Log response details if available
+        if (axiosError.response?.data) {
+          try {
+            const data = typeof axiosError.response.data === 'object' 
+              ? JSON.stringify(axiosError.response.data) 
+              : String(axiosError.response.data);
+            this.log.debug(`API error details: ${data}`);
+          } catch {
+            // Ignore stringification errors
+          }
+        }
+      }
+      
+      // Create an error with the status code for special handling of rate limits
+      const customError = new Error(`API error ${status}: ${statusText}`);
+      (customError as any).statusCode = status; // Add the status code to the error object for 429 detection
+      throw customError;
+    } else {
+      // For non-axios errors
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      if (this.log) {
+        this.log.error(`API ${method} ${endpoint} - Unexpected error: ${errorMessage}`);
+      }
+      throw new Error(`API error: ${errorMessage}`);
+    }
+  }
+  
+  async listDevices(): Promise<ClientResponse<Device[]>> {
+    const endpoint = '/v1/devices';
+    try {
+      const response = await this.axiosClient.get<Device[]>(endpoint, {headers: this.headers()});
+      this.logResponse(response, 'GET', endpoint);
+      return response;
+    } catch (error) {
+      this.handleError(error, 'GET', endpoint);
+    }
   }
 
-  setTemperatureFahrenheit(id: string, temperature: number): Promise<ClientResponse<Control>> {
-    return this.axiosClient.patch<Control>('/v1/devices/' + id, {set_temperature_f: temperature},
-      {headers: this.headers()});
+  async getDeviceStatus(id: string): Promise<ClientResponse<DeviceStatus>> {
+    const endpoint = `/v1/devices/${id}`;
+    try {
+      const response = await this.axiosClient.get<DeviceStatus>(endpoint, {headers: this.headers()});
+      this.logResponse(response, 'GET', endpoint);
+      return response;
+    } catch (error) {
+      this.handleError(error, 'GET', endpoint);
+    }
   }
 
-  setTemperatureCelsius(id: string, temperature: number): Promise<ClientResponse<Control>> {
-    return this.axiosClient.patch<Control>('/v1/devices/' + id, {set_temperature_c: temperature},
-      {headers: this.headers()});
+  async setTemperatureFahrenheit(id: string, temperature: number): Promise<ClientResponse<Control>> {
+    const endpoint = `/v1/devices/${id}`;
+    try {
+      const response = await this.axiosClient.patch<Control>(
+        endpoint, 
+        {set_temperature_f: temperature},
+        {headers: this.headers()}
+      );
+      this.logResponse(response, 'PATCH', endpoint);
+      return response;
+    } catch (error) {
+      this.handleError(error, 'PATCH', endpoint);
+    }
   }
 
-  setThermalControlStatus(id: string, targetState: 'standby' | 'active'): Promise<ClientResponse<Control>> {
-    return this.axiosClient.patch<Control>('/v1/devices/' + id, {thermal_control_status: targetState},
-      {headers: this.headers()});
+  async setTemperatureCelsius(id: string, temperature: number): Promise<ClientResponse<Control>> {
+    const endpoint = `/v1/devices/${id}`;
+    try {
+      const response = await this.axiosClient.patch<Control>(
+        endpoint, 
+        {set_temperature_c: temperature},
+        {headers: this.headers()}
+      );
+      this.logResponse(response, 'PATCH', endpoint);
+      return response;
+    } catch (error) {
+      this.handleError(error, 'PATCH', endpoint);
+    }
+  }
+
+  async setThermalControlStatus(id: string, targetState: 'standby' | 'active'): Promise<ClientResponse<Control>> {
+    const endpoint = `/v1/devices/${id}`;
+    try {
+      const response = await this.axiosClient.patch<Control>(
+        endpoint, 
+        {thermal_control_status: targetState},
+        {headers: this.headers()}
+      );
+      this.logResponse(response, 'PATCH', endpoint);
+      return response;
+    } catch (error) {
+      this.handleError(error, 'PATCH', endpoint);
+    }
   }
 }
 
@@ -79,4 +171,3 @@ export type DeviceStatus = {
     water_temperature_c: number;
   };
 };
-

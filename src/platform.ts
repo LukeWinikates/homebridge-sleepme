@@ -1,3 +1,4 @@
+// filename: src/platform.ts
 import {API, DynamicPlatformPlugin, Logging, PlatformAccessory, Service, Characteristic} from 'homebridge';
 
 import {Client} from './sleepme/client.js';
@@ -75,7 +76,7 @@ export class SleepmePlatform implements DynamicPlatformPlugin {
    */
   discoverDevices() {
     this.config.api_keys.forEach(key => {
-      const client = new Client(key);
+      const client = new Client(key, undefined, this.log);
       client.listDevices().then(r => {
         r.data.forEach(device => {
           const uuid = this.api.hap.uuid.generate(device.id);
@@ -114,6 +115,8 @@ export class SleepmePlatform implements DynamicPlatformPlugin {
             this.api.registerPlatformAccessories(PLUGIN_NAME, PLATFORM_NAME, [accessory]);
           }
         });
+      }).catch(error => {
+        this.log.error(`Failed to discover devices: ${error instanceof Error ? error.message : String(error)}`);
       });
     });
   }
