@@ -49,7 +49,7 @@
     "@eslint/js": "^9.9.0",
     "@release-it/bumper": "^7.0.0",
     "@release-it/conventional-changelog": "^10.0.0",
-    "@stylistic/eslint-plugin": "^4.0.1",
+    "@stylistic/eslint-plugin": "^5.1.0",
     "@types/node": ">= 20.14.14 < 21.0",
     "@typescript-eslint/eslint-plugin": "^8.0.0",
     "@typescript-eslint/parser": "^8.0.0",
