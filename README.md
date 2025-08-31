@@ -1,6 +1,8 @@
 # Homebridge Sleepme Dock Pro
 ## Homebridge Plugin for Sleepme Dock Pro Devices
 
+[![verified-by-homebridge](https://badgen.net/badge/homebridge/verified/purple)](https://github.com/homebridge/homebridge/wiki/Verified-Plugins)
+
 This [Homebridge](https://homebridge.io/) plugin brings [Sleepme](https://sleep.me/) Dock Pro devices into the Apple Home app, allowing you to control them via Siri or Home Automations.
 
 This is not an official Sleepme or Apple product, and may stop working without prior notice. Use at your own risk. There are no support guarantees.
