@@ -26,7 +26,7 @@ describe('ReadThroughCache', () => {
     await server.waitForARequest();
 
     expect(server.deviceGetRequests.length).toEqual(1);
-    server.deviceGetRequests.respondWith.success();
+    server.deviceGetRequests.respondWith.success(0);
     await Promise.all(requests);
 
     expect(server.requests['/v1/devices/1']).toEqual(1);
@@ -41,7 +41,7 @@ describe('ReadThroughCache', () => {
       const request = readThroughCache.get();
       await server.waitForARequest();
 
-      server.deviceGetRequests.respondWith.success();
+      server.deviceGetRequests.respondWith.success(0);
       await request;
       expect(server.requests['/v1/devices/1']).toEqual(1);
 
@@ -60,7 +60,7 @@ describe('ReadThroughCache', () => {
       const request = readThroughCache.get();
       await server.waitForARequest();
 
-      server.deviceGetRequests.respondWith.error429();
+      server.deviceGetRequests.respondWith.error429(0);
       await expect(request).resolves.toBe(null);
       expect(server.requests['/v1/devices/1']).toEqual(1);
     });
@@ -75,9 +75,33 @@ describe('ReadThroughCache', () => {
       const request = readThroughCache.get();
       await server.waitForARequest();
 
-      server.deviceGetRequests.respondWith.error500();
+      server.deviceGetRequests.respondWith.error500(0);
       await expect(request).resolves.toBe(null);
       expect(server.requests['/v1/devices/1']).toEqual(1);
+    });
+
+    test('another request can go through later', async () => {
+      server = start();
+      const client = new Client(server.token, server.host);
+      const logger = new Logger();
+      const readThroughCache = new ReadThroughCache(client, '1', logger);
+      const request = readThroughCache.get();
+      await server.waitForARequest();
+
+      const startTime = new Date();
+
+      server.deviceGetRequests.respondWith.error500(0);
+      await expect(request).resolves.toBe(null);
+      expect(server.requests['/v1/devices/1']).toEqual(1);
+
+      const number = startTime.valueOf() + 5000000;
+      jest.spyOn(Date, 'now').mockImplementation(() => number);
+      const request2 = readThroughCache.get();
+      await server.waitForARequest(2);
+
+      server.deviceGetRequests.respondWith.error500(1);
+      await expect(request2).resolves.toBe(null);
+      expect(server.requests['/v1/devices/1']).toEqual(2);
     });
   });
 

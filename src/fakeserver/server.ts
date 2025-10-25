@@ -11,9 +11,9 @@ const devices: Device[] = [{
 }];
 
 interface RespondWith {
-  success:()=>void;
-  error429:()=>void;
-  error500:()=>void;
+  success:(n:number)=>void;
+  error429:(n:number)=>void;
+  error500:(n:number)=>void;
 }
 
 interface DeviceGetRequests {
@@ -162,19 +162,19 @@ export function start(): FakeServer {
         return deviceGetRequests.length;
       },
       respondWith:{
-        success: () => {
-          const res = deviceGetRequests[0].res;
+        success: (n = 0) => {
+          const res = deviceGetRequests[n].res;
           res.statusCode = 200;
           res.setHeader('Content-Type', 'application/json');
           res.end(JSON.stringify(fakeDevice()));
         },
-        error429:() =>{
-          const res = deviceGetRequests[0].res;
+        error429:(n = 0) =>{
+          const res = deviceGetRequests[n].res;
           res.statusCode = 429;
           res.end();
         },
-        error500:() => {
-          const res = deviceGetRequests[0].res;
+        error500:(n = 0) => {
+          const res = deviceGetRequests[n].res;
           res.statusCode = 500;
           res.end();
         },
