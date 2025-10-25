@@ -15,10 +15,10 @@ class ReadThroughCache {
 
   get(): Promise<null | ClientResponse<DeviceStatus>> {
     this.log.debug(`get device status (responseTimestamp:${this.responseTimestamp}, responseExpireAt: ${this.responseExpireAt})`);
-    if (this.value && this.responseExpireAt &&
-      (new Date().valueOf() < this.responseExpireAt.valueOf())) {
-      this.log.info(`returning previously fetched value from ${this.responseTimestamp}`);
-      return Promise.resolve(this.value);
+    if (this.responseExpireAt &&
+      (Date.now() < this.responseExpireAt.valueOf())) {
+      this.log.info(`returning cached value from ${this.responseTimestamp}`);
+      return Promise.resolve(this.value ?? null);
     }
     if (!this.request) {
       this.log.info('making new request');
@@ -29,19 +29,17 @@ class ReadThroughCache {
         this.value = response;
         this.responseTimestamp = new Date();
         this.responseExpireAt = new Date(this.responseTimestamp.valueOf() + this.expirationMS);
-        this.request = undefined;
         this.errorCount = 0;
         return response;
       }).catch((err: Error | AxiosError) => {
         this.errorCount += 1;
         this.log.debug(`request error: ${err.message}`);
-        if (this.value) {
-          const backoffDuration = Math.max(Math.pow(2, this.errorCount) * this.expirationMS, 60 * 1000);
-          this.responseExpireAt = new Date(new Date().valueOf() + backoffDuration);
-          this.log.error(`backing off get requests until ${this.responseExpireAt}`);
-          return this.value;
-        }
-        return null;
+        const backoffDuration = Math.max(Math.pow(2, this.errorCount) * this.expirationMS, 60 * 1000);
+        this.responseExpireAt = new Date(new Date().valueOf() + backoffDuration);
+        this.log.error(`backing off get requests until ${this.responseExpireAt}`);
+        return this.value ?? null;
+      }).finally(()=>{
+        this.request = undefined;
       });
     }
     this.log.debug('returning current in-flight request');
