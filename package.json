@@ -60,7 +60,7 @@
     "release-it": "^19.0.0",
     "ts-jest-resolver": "^2.0.1",
     "ts-node": "^10.9.2",
-    "typescript": "^5.5.3"
+    "typescript": "^6.0.2"
   },
   "dependencies": {
     "axios": "^1.7.2"
