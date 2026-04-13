@@ -10,8 +10,8 @@
       "DOM",
       "ES2022"
     ],
-    "module": "ES2022",
-    "moduleResolution":"node",
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
     "sourceMap": false,
     "strict": true,
     "target": "ES2022"
