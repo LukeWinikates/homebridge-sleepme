@@ -42,9 +42,9 @@
     "sleepme"
   ],
   "devDependencies": {
-    "@babel/core": "^7.25.2",
-    "@babel/preset-env": "^7.25.3",
-    "@babel/preset-typescript": "^7.24.7",
+    "@babel/core": "^8.0.1",
+    "@babel/preset-env": "^8.0.2",
+    "@babel/preset-typescript": "^8.0.1",
     "@eslint/eslintrc": "^3.1.0",
     "@eslint/js": "^10.0.1",
     "@release-it/bumper": "^7.0.0",
@@ -57,10 +57,10 @@
     "homebridge": "^1.8.3",
     "jest": "^30.0.0",
     "nodemon": "^3.1.4",
-    "release-it": "^19.0.0",
+    "release-it": "^20.2.1",
     "ts-jest-resolver": "^2.0.1",
     "ts-node": "^10.9.2",
-    "typescript": "^5.5.3"
+    "typescript": "^6.0.3"
   },
   "dependencies": {
     "axios": "^1.7.2"
