@@ -1,4 +1,5 @@
-import {describe, expect, test, afterEach} from '@jest/globals';
+import { describe, test, expect, afterEach } from 'vitest';
+
 import {start, FakeServer, handleControlRequest} from '../fakeserver/server';
 import {Client} from './client';
 
@@ -15,7 +16,7 @@ describe('client', () => {
 
     const deviceStatusRequest = client.getDeviceStatus('1');
     await server.waitForARequest();
-    server.deviceGetRequests.respondWith.success();
+    server.deviceGetRequests.respondWith.success(0);
 
     const devices = await deviceStatusRequest;
     expect(devices.data.about).toEqual({

@@ -1,19 +1,35 @@
-import {describe, expect, test, jest, afterEach} from '@jest/globals';
+import {describe, test, expect, afterEach, vi} from 'vitest';
 import {PluginConfig, SleepmePlatform} from './platform';
-import {HomebridgeAPI} from 'homebridge/lib/api';
-import {Logger} from 'homebridge/lib/logger';
 import EventEmitter from 'events';
 import {FakeServer, start} from './fakeserver/server';
 import {PLUGIN_NAME} from './settings';
+import type {API, Logging} from 'homebridge';
+
+class FakeHomebridgeAPI extends EventEmitter {
+  public hap = {};
+  platformAccessory: () => void;
+
+  constructor() {
+    super();
+    this.platformAccessory = vi.fn();
+    this.hap = {
+      uuid: {
+        generate: (id: string) => id,
+      },
+    };
+  }
+}
 
 function createPluginForTest(config: unknown): SleepmePlatform {
-  const api = new HomebridgeAPI();
-  const logger = Logger.withPrefix('test');
-  jest.spyOn(logger, 'error').mockImplementation(() => {
-  });
-  jest.spyOn(logger, 'info').mockImplementation(() => {
-  });
-  return new SleepmePlatform(logger, config as PluginConfig, api);
+  const logger = {
+    info: vi.fn(),
+    debug: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+  } as unknown as Logging;
+
+  const api = new FakeHomebridgeAPI() as unknown as API;
+  return new SleepmePlatform(logger, config as PluginConfig, api as API);
 }
 
 describe('platform', () => {
@@ -74,7 +90,6 @@ describe('platform', () => {
           api_keys: [server.token],
           sleepme_api_url: server.host,
         });
-        jest.spyOn(platform.api, 'platformAccessory');
 
         const discoverDevices = platform.discoverDevices();
         await discoverDevices;
