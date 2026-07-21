@@ -99,10 +99,13 @@ export class SleepmePlatform implements DynamicPlatformPlugin {
     return Promise.all(this.config.api_keys.map((key: string) => {
       const client = new Client(key, this.config.sleepme_api_url);
       return client.listDevices().then(r => {
+
         r.data.forEach(device => {
+
           const uuid = this.api.hap.uuid.generate(device.id);
           const existingAccessory = this.accessories.find(accessory => accessory.UUID === uuid);
           if (existingAccessory) {
+
             // the accessory already exists
             this.log.info('Restoring existing accessory from cache:', existingAccessory.displayName);
 
@@ -119,6 +122,7 @@ export class SleepmePlatform implements DynamicPlatformPlugin {
             // this.api.unregisterPlatformAccessories(PLUGIN_NAME, PLATFORM_NAME, [existingAccessory]);
             // this.log.info('Removing existing accessory from cache:', existingAccessory.displayName);
           } else {
+
             // the accessory does not yet exist, so we need to create it
             this.log.info('Adding new accessory:', device.name);
             // create a new accessory

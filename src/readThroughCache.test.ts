@@ -1,14 +1,22 @@
-import {afterEach, describe, expect, jest, test} from '@jest/globals';
+import {describe, test, expect, beforeEach,afterEach, vi} from 'vitest';
 import {FakeServer, start} from './fakeserver/server';
 import {Client} from './sleepme/client';
 import ReadThroughCache from './readThroughCache';
-import {Logger} from 'homebridge/lib/logger';
+import {Logger, Logging} from 'homebridge';
 
-jest.mock('homebridge/lib/logger');
 
 describe('ReadThroughCache', () => {
   let server: FakeServer;
+  let logger: Logging;
 
+  beforeEach(() => {
+    logger = {
+      info: vi.fn(),
+      debug: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn(),
+    } as unknown as Logging;
+  });
   afterEach(async () => {
     await server.stop();
   });
@@ -16,7 +24,6 @@ describe('ReadThroughCache', () => {
   test('deduplicates in-flight requests', async () => {
     server = start();
     const client = new Client(server.token, server.host);
-    const logger = new Logger();
     const readThroughCache = new ReadThroughCache(client, '1', logger);
     const requests = [
       readThroughCache.get(),
@@ -36,7 +43,6 @@ describe('ReadThroughCache', () => {
     test('re-uses recently completed requests', async () => {
       server = start();
       const client = new Client(server.token, server.host);
-      const logger = new Logger();
       const readThroughCache = new ReadThroughCache(client, '1', logger);
       const request = readThroughCache.get();
       await server.waitForARequest();
@@ -55,7 +61,6 @@ describe('ReadThroughCache', () => {
     test('does not crash', async () => {
       server = start();
       const client = new Client(server.token, server.host);
-      const logger = new Logger();
       const readThroughCache = new ReadThroughCache(client, '1', logger);
       const request = readThroughCache.get();
       await server.waitForARequest();
@@ -70,7 +75,6 @@ describe('ReadThroughCache', () => {
     test('does not crash', async () => {
       server = start();
       const client = new Client(server.token, server.host);
-      const logger = new Logger();
       const readThroughCache = new ReadThroughCache(client, '1', logger);
       const request = readThroughCache.get();
       await server.waitForARequest();
@@ -83,7 +87,6 @@ describe('ReadThroughCache', () => {
     test('another request can go through later', async () => {
       server = start();
       const client = new Client(server.token, server.host);
-      const logger = new Logger();
       const readThroughCache = new ReadThroughCache(client, '1', logger);
       const request = readThroughCache.get();
       await server.waitForARequest();
@@ -95,7 +98,7 @@ describe('ReadThroughCache', () => {
       expect(server.requests['/v1/devices/1']).toEqual(1);
 
       const number = startTime.valueOf() + 5000000;
-      jest.spyOn(Date, 'now').mockImplementation(() => number);
+      vi.spyOn(Date, 'now').mockImplementation(() => number);
       const request2 = readThroughCache.get();
       await server.waitForARequest(2);
 
@@ -109,7 +112,6 @@ describe('ReadThroughCache', () => {
     test('does not crash', async () => {
       server = start();
       const client = new Client('abc', server.host);
-      const logger = new Logger();
       const readThroughCache = new ReadThroughCache(client, '1', logger);
       const request = readThroughCache.get();
 
