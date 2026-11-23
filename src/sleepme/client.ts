@@ -1,9 +1,9 @@
 import axios, {AxiosInstance} from 'axios';
 
-export type ClientResponse<T> = {
+export interface ClientResponse<T> {
   data: T;
   status: number;
-};
+}
 
 export class Client {
   readonly token: string;
@@ -46,22 +46,22 @@ export class Client {
   }
 }
 
-export type Device = {
+export interface Device {
   id: string;
   name: string;
   attachments: string[];
-};
+}
 
-export type Control = {
+export interface Control {
   brightness_level: number;
   display_temperature_unit: 'c' | 'f';
   set_temperature_c: number;
   set_temperature_f: number;
   thermal_control_status: 'standby' | 'active';
   time_zone: string;
-};
+}
 
-export type DeviceStatus = {
+export interface DeviceStatus {
   about: {
     firmware_version: string;
     ip_address: string;
@@ -78,5 +78,5 @@ export type DeviceStatus = {
     water_temperature_f: number;
     water_temperature_c: number;
   };
-};
+}
 

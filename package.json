@@ -49,14 +49,13 @@
     "@release-it/bumper": "^8.0.0",
     "@stylistic/eslint-plugin": "^6.0.1",
     "@types/node": ">= 22.0.0",
-    "@typescript-eslint/eslint-plugin": "^8.63.0",
-    "@typescript-eslint/parser": "^8.0.0",
     "eslint": "^10.0.2",
     "homebridge": "^2.2.1",
     "nodemon": "^3.1.4",
     "release-it": "^21.0.0",
     "ts-node": "^10.9.2",
     "typescript": "^6.0.3",
+    "typescript-eslint": "^8.73.0",
     "vitest": "^5.1.1"
   },
   "dependencies": {

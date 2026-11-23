@@ -21,7 +21,7 @@ interface DeviceGetRequests {
   respondWith: RespondWith,
 }
 
-export type FakeServer = {
+export interface FakeServer {
   host: string;
   stop: () => Promise<string>;
   waitForARequest: (count?:number) => Promise<void>;
@@ -29,7 +29,7 @@ export type FakeServer = {
   requests: Record<string, number>
   deviceGetRequests: DeviceGetRequests
   devicePatchRequests: { req: IncomingMessage, res: ServerResponse }[]
-};
+}
 
 function fakeDevice(): DeviceStatus {
   return {
@@ -60,7 +60,7 @@ function fakeDevice(): DeviceStatus {
 }
 
 function parseBody(req: InstanceType<typeof IncomingMessage>): Promise<string> {
-  let requestBody: string = '';
+  let requestBody = '';
   return new Promise((resolve, reject) => {
     req.on('data', (chunk) => {
       requestBody += chunk;
@@ -141,9 +141,7 @@ export function start(): FakeServer {
     res.end('');
   });
 
-  server.listen(port, hostname, () => {
-
-  });
+  server.listen(port, hostname);
 
   return {
     host: `http://${hostname}:${port}`,
@@ -181,7 +179,7 @@ export function start(): FakeServer {
       },
     },
     devicePatchRequests: devicePatchRequests,
-    waitForARequest: (count: number = 1) => {
+    waitForARequest: (count = 1) => {
       return new Promise((resolve) => {
         const timeout = setInterval(() => {
           if (deviceGetRequests.length + devicePatchRequests.length >= count) {
