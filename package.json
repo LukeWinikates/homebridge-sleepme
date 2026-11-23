@@ -48,7 +48,7 @@
     "@eslint/eslintrc": "^3.1.0",
     "@eslint/js": "^10.0.1",
     "@release-it/bumper": "^8.0.0",
-    "@stylistic/eslint-plugin": "^5.1.0",
+    "@stylistic/eslint-plugin": "^6.0.1",
     "@types/node": ">= 20.14.14 < 21.0",
     "@typescript-eslint/eslint-plugin": "^8.63.0",
     "@typescript-eslint/parser": "^8.0.0",
